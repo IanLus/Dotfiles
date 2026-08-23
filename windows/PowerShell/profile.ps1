@@ -36,6 +36,22 @@ Invoke-ProfileHook fnm {
         $fnmArgs += @('--version-file-strategy', 'recursive')
     }
     & fnm @fnmArgs | Out-String | Invoke-Expression
+
+    # fnm leaves FNM_MULTISHELL_PATH behind. Exiting covers `exit`; the waiter
+    # also covers closing the Windows Terminal tab (Exiting often does not run).
+    if ($env:FNM_MULTISHELL_PATH) {
+        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -SupportEvent -MessageData $env:FNM_MULTISHELL_PATH -Action {
+            $target = $Event.MessageData
+            if ($target -and ($target -like '*fnm_multishells*') -and (Test-Path -LiteralPath $target)) {
+                Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+            }
+        } | Out-Null
+
+        $cleanupExe = Join-Path $PSScriptRoot '..\clink\tools\fnm_multishell_cleanup.exe'
+        if (Test-Path -LiteralPath $cleanupExe) {
+            Start-Process -FilePath $cleanupExe -ArgumentList @("$PID", $env:FNM_MULTISHELL_PATH) -WindowStyle Hidden -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Invoke-ProfileHook zoxide {

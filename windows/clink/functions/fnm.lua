@@ -48,6 +48,51 @@ for line in out:gmatch("[^\r\n]+") do
 	end
 end
 
+local function script_dir()
+	local src = debug.getinfo(1, "S").source
+	if src:sub(1, 1) == "@" then
+		src = src:sub(2)
+	end
+	return src:match("^(.*)[/\\]") or "."
+end
+
+local function remove_multishell_link()
+	local path = os.getenv("FNM_MULTISHELL_PATH")
+	if not path or path == "" or not path:find("fnm_multishells", 1, true) then
+		return
+	end
+	os.execute('rmdir "' .. path .. '" >nul 2>nul')
+end
+
+-- fnm never deletes the per-session symlink. CMD has no EXIT trap; a waiter
+-- covers `exit`, Ctrl+D, and closing the Windows Terminal tab.
+local function start_multishell_cleanup_waiter()
+	local path = os.getenv("FNM_MULTISHELL_PATH")
+	local pid = os.getpid and os.getpid()
+	if not path or path == "" or not pid then
+		return
+	end
+	if not path:find("fnm_multishells", 1, true) then
+		return
+	end
+	local exe = script_dir() .. "\\..\\tools\\fnm_multishell_cleanup.exe"
+	if os.isfile and not os.isfile(exe) then
+		return
+	end
+	os.execute(string.format('start "" /b "%s" %d "%s"', exe, pid, path))
+end
+
+start_multishell_cleanup_waiter()
+
+if clink.onfilterinput then
+	clink.onfilterinput(function(line)
+		local cmd = line:match("^%s*(%S+)")
+		if cmd and cmd:lower() == "exit" then
+			remove_multishell_link()
+		end
+	end)
+end
+
 local function cwd()
 	if os.getcwd then
 		return os.getcwd()

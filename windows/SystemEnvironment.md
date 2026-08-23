@@ -43,6 +43,12 @@ MINIFORGE=C:\Software\miniforge3
 FNM_VERSION_FILE_STRATEGY=recursive
 ```
 
+fnm 不会在 shell 退出时删除 `FNM_MULTISHELL_PATH`。pwsh / Clink 会启动 `tools/fnm_multishell_cleanup.exe`，等本进程结束后再删掉该符号链接。重新编译：
+
+```cmd
+gcc -O2 -s -mwindows -o %CLINK_PROFILE%\tools\fnm_multishell_cleanup.exe %CLINK_PROFILE%\tools\fnm_multishell_cleanup.c -lshell32
+```
+
 ### Starship 配置文件
 
 ```cmd

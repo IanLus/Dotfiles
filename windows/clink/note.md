@@ -68,7 +68,7 @@ clink/
     aliases.lua            # doskey 别名（含 spr/gpr/cpr/elt/dlt）
   functions/
     register_cmds.lua      # Lua 命令着色/补全注册
-    fnm.lua                # fnm env --use-on-cd --version-file-strategy=recursive + onbeginedit
+    fnm.lua                # fnm env --use-on-cd --version-file-strategy=recursive + onbeginedit；退出时删掉本会话 multishell 链接
     path_linux.lua         # enable-linux-tools / disable-linux-tools
     utils.lua              # mkcd / which / rm
     proxy.lua              # proxy_on / proxy_off / proxy_status
