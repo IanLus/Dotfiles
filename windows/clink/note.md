@@ -86,7 +86,7 @@ clink/
     which.lua              # which（Clink 与 fzf 预览共用）
     proxy.lua              # proxy_on / proxy_off / proxy_status
     fzf_env.lua            # FZF_* 预览环境变量（仅 cmd/clink）
-    fzf_bindings.lua       # Alt+Shift+/ = fzf_bindings；Tab/Ctrl+Space = fzf（预填当前词）；Alt+B 还原 backward-word
+    fzf_bindings.lua       # Tab/Ctrl+Space = fzf（预填当前词）；窗口内 / 连续补全；** 仍递归；Alt+Shift+/ 绑键列表；Alt+B = backward-word
     envvar_complete.lua    # 路径值 %VAR% 补全加 \，空格再去掉；%VAR%<Tab> 展开，%VAR%\<Tab> 相对路径补全
 ```
 
@@ -140,7 +140,7 @@ pwsh -File "%CLINK_PROFILE%\install\clink-fzf.ps1" -Minimal
 
 3. 脚本会启用 `fzf.default_bindings` 与 `fzf_git.default_bindings`。
 
-常用键：`Ctrl+T` 选文件，`Tab` / `Ctrl+Space` 用 fzf 筛选补全（`**` 仍为递归），`Ctrl+R` 历史，`Alt+C` 进子目录，`Alt+Shift+/`（`\e?`）列出并执行已绑定命令（覆盖 clink-fzf 默认的 `Alt+B`，以及 Clink 默认的 `clink-what-is`）。
+常用键：`Ctrl+T` 选文件，`Tab` / `Ctrl+Space` 用 fzf 筛选补全（窗口内 `/` 接受并继续补全，Enter 只接受；`**` 仍为递归），`Ctrl+R` 历史，`Alt+C` 进子目录，`Alt+Shift+/`（`\e?`）列出并执行已绑定命令（覆盖 clink-fzf 默认的 `Alt+B`，以及 Clink 默认的 `clink-what-is`）。
 
 ### fzf 预览配置
 
