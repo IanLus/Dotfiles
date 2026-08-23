@@ -10,6 +10,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
+Ensure-SymbolicLinkPrivilege -BoundParameters $PSBoundParameters
 
 if (-not $Repo) { $Repo = Join-Path $ClinkSoftwareRoot 'gizmos' }
 

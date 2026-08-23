@@ -34,6 +34,14 @@ if (-not $NoProxy -and -not $PSBoundParameters.ContainsKey('Proxy')) {
 
 . "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
 
+$elevateParams = @{}
+foreach ($key in $PSBoundParameters.Keys) {
+	$elevateParams[$key] = $PSBoundParameters[$key]
+}
+if ($Proxy) { $elevateParams['Proxy'] = $Proxy }
+if ($NoProxy) { $elevateParams['NoProxy'] = $true }
+Ensure-SymbolicLinkPrivilege -BoundParameters $elevateParams
+
 $steps = @(
     @{ Name = 'z.lua'; Script = 'z.ps1'; Args = @{} }
     @{ Name = 'clink-fzf'; Script = 'clink-fzf.ps1'; Args = @{ Minimal = $Minimal; NoBindings = $NoBindings } }

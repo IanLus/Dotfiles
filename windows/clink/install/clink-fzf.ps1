@@ -11,6 +11,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
+Ensure-SymbolicLinkPrivilege -BoundParameters $PSBoundParameters
 
 if (-not $Repo) { $Repo = Join-Path $ClinkSoftwareRoot 'fzf' }
 
@@ -30,15 +31,8 @@ foreach ($name in $Files) {
 }
 
 if (-not $NoBindings) {
-    if (Get-Command clink -ErrorAction SilentlyContinue) {
-        clink set fzf.default_bindings true | Out-Null
-        clink set fzf_git.default_bindings true | Out-Null
-        Write-Host 'Enabled clink fzf.default_bindings and fzf_git.default_bindings.'
-    } else {
-        Write-Warning 'clink not in PATH; run manually:'
-        Write-Warning '  clink set fzf.default_bindings true'
-        Write-Warning '  clink set fzf_git.default_bindings true'
-    }
+    Invoke-ClinkSet -Name 'fzf.default_bindings' -Value 'true'
+    Invoke-ClinkSet -Name 'fzf_git.default_bindings' -Value 'true'
 }
 
 Write-Host 'Done. Requires fzf.exe on PATH (or clink set fzf.exe_location).'
