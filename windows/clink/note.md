@@ -87,6 +87,7 @@ clink/
     proxy.lua              # proxy_on / proxy_off / proxy_status
     fzf_env.lua            # FZF_* 预览环境变量（仅 cmd/clink）
     fzf_bindings.lua       # Alt+Shift+/ = fzf_bindings；Tab/Ctrl+Space = fzf（预填当前词）；Alt+B 还原 backward-word
+    envvar_complete.lua    # 路径值 %VAR% 补全加 \，空格再去掉；%VAR%<Tab> 展开，%VAR%\<Tab> 相对路径补全
 ```
 
 `z.lua` / `z.cmd` 为上游第三方脚本（~83KB），**不提交到 dotfiles**；由 `install\z.ps1` 链接到 `%Z_LUA_HOME%`（默认 `C:\Software\clink\z.lua`）。

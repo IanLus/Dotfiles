@@ -18,7 +18,13 @@ local function word_at_cursor(line_state)
 	end
 	local word = line_state:getline():sub(info.offset, line_state:getcursor() - 1)
 	word = word:gsub('"', ""):gsub("'", "")
-	word = word:gsub("%%", "")
+	-- %VAR%\rel → only the last relative component (not DOTDIR\).
+	local env_rel = word:match("^%%[^%%]+%%[\\/](.*)$")
+	if env_rel then
+		word = env_rel:match("([^/\\]*)$") or env_rel
+	else
+		word = word:gsub("%%", "")
+	end
 	word = word:gsub("%^", "^^")
 	local pre, suf = word:match("^(.-)(\\*)$")
 	if pre and suf then
