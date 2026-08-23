@@ -17,6 +17,23 @@ for /f "tokens=1,2 delims=	" %%a in ("%__DELIMITED%") do (
 
 if "%__FILE%" == "" goto :end
 
+rem Path completion after `dir\`: list items are relative to that directory,
+rem not pwd. Resolve against CLINK_FZF_PATH_PREFIX when the name is not here.
+if not defined CLINK_FZF_PATH_PREFIX goto :resolve_done
+if exist %__ARG% goto :resolve_done
+if exist %__ARG%\ goto :resolve_done
+set "__JOINED=%CLINK_FZF_PATH_PREFIX%\%__FILE%"
+if exist "%__JOINED%" (
+    set "__FILE=%__JOINED%"
+    set __ARG="%__JOINED%"
+    goto :resolve_done
+)
+if exist "%__JOINED%\" (
+    set "__FILE=%__JOINED%"
+    set __ARG="%__JOINED%"
+)
+:resolve_done
+
 rem Directory: list contents with eza (same as less/lessfilter.sh).
 if exist %__ARG%\ (
     eza --git -ahl --color=always --icons=always %__ARG%
