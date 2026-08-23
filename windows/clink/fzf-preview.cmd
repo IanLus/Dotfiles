@@ -46,8 +46,16 @@ bat --force-colorization --style=numbers,changes --line-range=:500 -- %__ARG%
 goto :end
 
 :preview_which
-cscript //nologo "%~dp0fzf-preview-which.js" "%__FILE%" 2>nul
-if not errorlevel 1 goto :end
+set "LUA="
+for /f "delims=" %%P in ('where.exe lua 2^>nul') do (
+    set "LUA=%%P"
+    goto :preview_which_lua
+)
+:preview_which_lua
+if defined LUA (
+    "%LUA%" "%~dp0functions\which.lua" "%__FILE%" 2>nul
+    if not errorlevel 1 goto :end
+)
 where.exe "%__FILE%" 2>nul
 if errorlevel 1 (
     if exist %__ARG% echo %__FILE%

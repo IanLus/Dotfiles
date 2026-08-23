@@ -82,7 +82,8 @@ clink/
     register_cmds.lua      # Lua 命令着色/补全注册
     fnm.lua                # fnm env --use-on-cd --version-file-strategy=recursive + onbeginedit；退出时删掉本会话 multishell 链接
     path_linux.lua         # enable-linux-tools / disable-linux-tools
-    utils.lua              # mkcd / which / rm
+    utils.lua              # mkcd / rm
+    which.lua              # which（Clink 与 fzf 预览共用）
     proxy.lua              # proxy_on / proxy_off / proxy_status
     fzf_env.lua            # FZF_* 预览环境变量（仅 cmd/clink）
     fzf_bindings.lua       # Alt+Shift+/ = fzf_bindings；Tab/Ctrl+Space = fzf（预填当前词）；Alt+B 还原 backward-word
@@ -154,7 +155,7 @@ pwsh -File "%CLINK_PROFILE%\install\dirx.ps1"
 
 默认安装到 `C:\Software\dirx.exe` 并将 `C:\Software` 加入用户 PATH（与 clink 上游仓库分离）。文档见 [clink-fzf FZF_CTRL_T_COMMAND](https://github.com/chrisant996/clink-fzf/blob/master/fzf.lua)、[dirx --bare-relative](https://github.com/chrisant996/dirx#options)。
 
-**`fzf-preview.cmd`**：目录 → `eza --git -ahl --color=always --icons=always`（同 `less/lessfilter.sh`），图片 → chafa，文本 → bat。预览窗 `Ctrl+/` 切换。
+**`fzf-preview.cmd`**：目录 → `eza --git -ahl --color=always --icons=always`（同 `less/lessfilter.sh`），图片 → chafa，文本 → bat，exe/别名/Lua 命令 → `lua functions/which.lua`（与提示符 `which` 同一模块）。预览窗 `Ctrl+/` 切换。
 
 ## 配置 tilde_autoexpand（`~` 展开为 HOME）
 

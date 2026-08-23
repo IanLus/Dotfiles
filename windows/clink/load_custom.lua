@@ -16,6 +16,7 @@ local scripts = {
 	"functions\\fnm.lua",
 	"functions\\path_linux.lua",
 	"functions\\utils.lua",
+	"functions\\which.lua",
 	"functions\\proxy.lua",
 }
 
