@@ -52,6 +52,16 @@ clink set autosuggest.inline true
 clink set clink.logo none
 ```
 
+## 一键安装上游依赖（新机器）
+
+在已设置 `CLINK_PROFILE`（即 `%DOTDIR%\windows\clink`）后执行一次即可，不必逐个跑 `install\` 下的脚本：
+
+```powershell
+pwsh -File "%CLINK_PROFILE%\install\all.ps1"
+```
+
+顺序：`z.lua` → `clink-fzf` → `clink-gizmos` → `dirx`，并把 `%CLINK_PROFILE%` 加入用户 PATH。默认经 `http://127.0.0.1:7890` 代理；无代理加 `-NoProxy`。仅核心 fzf 脚本加 `-Minimal`。
+
 ## 自定义脚本（`%CLINK_PROFILE%`，即 `%DOTDIR%\windows\clink`）
 
 别名与函数分目录存放；根目录的 `load_custom.lua` 负责加载（Clink 不会递归扫描子目录）。
@@ -60,9 +70,11 @@ clink set clink.logo none
 clink/
   load_custom.lua          # 加载器
   install/                 # 上游安装脚本
+    all.ps1                # 一键：z + clink-fzf + gizmos + dirx
     z.ps1                  # z.lua / z.cmd（C:\Software\clink\z.lua）
     clink-fzf.ps1          # fzf 集成（C:\Software\clink\fzf）
     clink-gizmos.ps1
+    dirx.ps1               # dirx.exe（C:\Software）
   fzf-preview.cmd          # fzf 预览脚本（目录/图片/文本）
   aliases/
     aliases.lua            # doskey 别名（含 spr/gpr/cpr/elt/dlt）

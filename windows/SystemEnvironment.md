@@ -108,7 +108,13 @@ gcc -O2 -s -o %CLINK_PROFILE%\tools\set_console_utf8.exe %CLINK_PROFILE%\tools\s
 | `install\clink-fzf.ps1` | `C:\Software\clink\fzf` |
 | `install\clink-gizmos.ps1` | `C:\Software\clink\gizmos` |
 
-在 `%CLINK_PROFILE%\install\` 下执行对应脚本，会在 profile 目录创建符号链接。
+新机器一次装完：
+
+```powershell
+pwsh -File "%CLINK_PROFILE%\install\all.ps1"
+```
+
+也可在 `%CLINK_PROFILE%\install\` 下单独执行对应脚本，会在 profile 目录创建符号链接。
 
 ## 自动添加部分
 
