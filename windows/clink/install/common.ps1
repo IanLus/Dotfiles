@@ -157,11 +157,11 @@ function Set-UserEnvVar {
         Write-Host "Keep $Name = $existing"
         return $existing
     }
-    [Environment]::SetEnvironmentVariable($Name, $Value, 'User')
     $expanded = [Environment]::ExpandEnvironmentVariables($Value)
+    [Environment]::SetEnvironmentVariable($Name, $expanded, 'User')
     Set-Item -Path "Env:$Name" -Value $expanded
-    Write-InstallSet -Name $Name -Value $Value
-    return $Value
+    Write-InstallSet -Name $Name -Value $expanded
+    return $expanded
 }
 
 function Ensure-DotDirAndClinkProfile {
@@ -169,8 +169,12 @@ function Ensure-DotDirAndClinkProfile {
     if (-not (Get-PersistentEnv -Name 'DOTDIR')) {
         Set-UserEnvVar -Name 'DOTDIR' -Value $dotDir | Out-Null
     }
-    if (-not (Get-PersistentEnv -Name 'CLINK_PROFILE')) {
-        Set-UserEnvVar -Name 'CLINK_PROFILE' -Value '%DOTDIR%\windows\clink' | Out-Null
+    # User-level %DOTDIR% is not visible when Windows expands another user var.
+    $profile = Get-PersistentEnv -Name 'CLINK_PROFILE'
+    $machineDot = [Environment]::GetEnvironmentVariable('DOTDIR', 'Machine')
+    $nestedUserDot = $profile -match '%DOTDIR%' -and [string]::IsNullOrWhiteSpace($machineDot)
+    if ([string]::IsNullOrWhiteSpace($profile) -or $nestedUserDot) {
+        Set-UserEnvVar -Name 'CLINK_PROFILE' -Value $script:ClinkProfileDir -Overwrite | Out-Null
     }
     Use-ClinkProfileEnv
 }

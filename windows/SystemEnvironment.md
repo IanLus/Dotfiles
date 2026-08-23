@@ -78,9 +78,13 @@ JAVA8=C:\Program Files\Java\jdk1.8.0_202
 
 ### Clink 配置目录
 
+`DOTDIR` 必须是**系统变量**，用户变量里的 `%DOTDIR%` 在展开另一个用户变量时不可见。因此：
+
 ```cmd
 CLINK_PROFILE=%DOTDIR%\windows\clink
 ```
+
+只在 `DOTDIR` 为系统变量时这样写。若 `DOTDIR` 只在用户级，写成绝对路径（安装脚本也按这个规则写）。
 
 将 `%CLINK_PROFILE%` 加入用户 `PATH`，以便全局调用 `z.cmd`（doskey 别名 `zb`/`zf` 等依赖此项）。
 

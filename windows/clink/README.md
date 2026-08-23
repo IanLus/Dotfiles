@@ -32,7 +32,7 @@ pwsh -File "$HOME\Documents\dotfiles\windows\clink\install\all.ps1"
 pwsh -File "$env:DOTDIR\windows\clink\install\all.ps1"
 ```
 
-未设置时会补上 `DOTDIR` 和 `CLINK_PROFILE=%DOTDIR%\windows\clink`。装完把 profile 加入用户 PATH（已有则跳过）。**新开一个终端**后再用。
+未设置时会补上 `DOTDIR` 和 `CLINK_PROFILE`（绝对路径）。`DOTDIR` 若只在用户级，用户级的 `CLINK_PROFILE=%DOTDIR%\...` 展开时找不到 `DOTDIR`，所以脚本不这样写。装完把 profile 加入用户 PATH（已有则跳过）。**新开一个终端**后再用。
 
 代理：已有 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` 则直接用；否则询问，回车默认 `http://127.0.0.1:7890`。`-NoProxy` 关闭；`-Proxy` 指定。`-Minimal` 只链 `fzf.lua`。
 
