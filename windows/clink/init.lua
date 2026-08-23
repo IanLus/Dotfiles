@@ -8,15 +8,15 @@ end
 local root = src:match("^(.*)[/\\]") or "."
 
 local scripts = {
-	"aliases\\aliases.lua",
+	"aliases\\init.lua",
 	"functions\\utf8_console.lua",
-	"functions\\register_cmds.lua",
+	"functions\\lua_commands.lua",
 	"functions\\fzf_env.lua",
 	"functions\\fzf_bindings.lua",
 	"functions\\envvar_complete.lua",
 	"functions\\fnm.lua",
-	"functions\\path_linux.lua",
-	"functions\\utils.lua",
+	"functions\\unix_tools.lua",
+	"functions\\fs.lua",
 	"functions\\which.lua",
 	"functions\\proxy.lua",
 }

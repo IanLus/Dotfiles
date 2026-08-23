@@ -1,5 +1,5 @@
 -- clink-fzf preview and FZF_* options (cmd/clink only; not Windows user env).
--- Clink settings (fzf.height, fzf_rg.show_preview, ...) live in clink_settings.
+-- Clink settings (fzf.height, fzf_rg.show_preview, ...) are written by install/fzf.ps1.
 
 local function set_default(name, value)
 	if os.getenv(name) == nil or os.getenv(name) == "" then
@@ -17,7 +17,7 @@ local function command_on_path(name)
 	return line ~= nil and line ~= ""
 end
 
--- Relative paths for Ctrl+T and ** Tab (dirx on PATH; install/dirx.ps1 -> C:\Software).
+-- Relative paths for Ctrl+T and ** Tab (dirx on PATH; install/dirx.ps1 -> C:\Software\dirx).
 if command_on_path("dirx.exe") then
 	set_default("FZF_CTRL_T_COMMAND", "fzf-list-files.cmd $dir")
 	set_default("FZF_ALT_C_COMMAND", "fzf-list-dirs.cmd $dir")

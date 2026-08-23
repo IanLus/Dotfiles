@@ -1,4 +1,4 @@
--- Toggle %GIT%\usr\bin on PATH (port of path_linux.ps1).
+-- Toggle %GIT%\usr\bin on PATH (enable-linux-tools / disable-linux-tools).
 -- enable-linux-tools  (alias: elt)
 -- disable-linux-tools (alias: dlt)
 
@@ -99,5 +99,5 @@ if clink.onfilterinput then
 		register_clink_lua_command("disable-linux-tools")
 	end
 else
-	print("path_linux.lua requires a newer version of Clink; please upgrade.")
+	print("unix_tools.lua requires a newer version of Clink; please upgrade.")
 end

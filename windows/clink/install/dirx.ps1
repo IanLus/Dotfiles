@@ -1,6 +1,5 @@
 # Install chrisant996/dirx (prebuilt release; used by clink-fzf for relative paths).
-# Installs dirx.exe to C:\Software and adds that directory to user PATH.
-# Already installed: skip if current; if older than latest (or -Version), ask to update (Enter = yes).
+# Installs to C:\Software\dirx\dirx.exe and adds that folder (not C:\Software) to PATH.
 
 param(
     [string]$InstallDir,
@@ -10,11 +9,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-. "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
+. "$PSScriptRoot\common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
 
-if (-not $InstallDir) { $InstallDir = $SoftwareRoot }
+if (-not $InstallDir) { $InstallDir = Join-Path $SoftwareRoot 'dirx' }
 $exe = Join-Path $InstallDir 'dirx.exe'
-$legacyExe = Join-Path $ClinkSoftwareRoot 'dirx\dirx.exe'
+$strayRootExe = Join-Path $SoftwareRoot 'dirx.exe'
+$legacyClinkExe = Join-Path $ClinkSoftwareRoot 'dirx\dirx.exe'
 
 function ConvertTo-DirxVersion {
     param([string]$Text)
@@ -139,15 +139,24 @@ function Install-DirxRelease {
     Write-Host "Installed dirx $Tag -> $ExePath" -ForegroundColor Green
 }
 
-if ((Test-Path -LiteralPath $legacyExe) -and -not (Test-Path -LiteralPath $exe)) {
-    Write-Host "Migrating dirx from $legacyExe ..."
+function Move-DirxIfPresent {
+    param([string]$From)
+    if (-not (Test-Path -LiteralPath $From)) { return }
+    if ($From -ieq $exe) { return }
     if (-not (Test-Path -LiteralPath $InstallDir)) {
         New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     }
-    Copy-Item -LiteralPath $legacyExe -Destination $exe -Force
-    Add-UserPathEntry -Dir $InstallDir
-    Write-Host "Installed dirx -> $exe"
+    if (-not (Test-Path -LiteralPath $exe)) {
+        Write-Host "Migrating dirx from $From ..."
+        Copy-Item -LiteralPath $From -Destination $exe -Force
+    }
+    Remove-Item -LiteralPath $From -Force
+    Write-Host "Removed stray $From"
 }
+
+Move-DirxIfPresent -From $strayRootExe
+Move-DirxIfPresent -From $legacyClinkExe
+Remove-UserPathEntry -Dir $SoftwareRoot
 
 $explicitVersion = $PSBoundParameters.ContainsKey('Version') -and -not [string]::IsNullOrWhiteSpace($Version)
 if ($explicitVersion) {

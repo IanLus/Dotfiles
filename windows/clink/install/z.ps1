@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-. "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
+. "$PSScriptRoot\common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
 Ensure-SymbolicLinkPrivilege -BoundParameters $PSBoundParameters
 
 $ZRepo = if ($env:Z_LUA_HOME) { $env:Z_LUA_HOME } else { Join-Path $ClinkSoftwareRoot 'z.lua' }

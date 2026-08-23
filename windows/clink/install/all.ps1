@@ -1,5 +1,5 @@
-# One-shot Clink profile install: z.lua, clink-fzf, gizmos, dirx.
-# For a new machine: pwsh -File "$env:CLINK_PROFILE\install\all.ps1"
+# One-shot Clink setup from a machine that may not have Clink yet.
+#   pwsh -File <dotfiles>\windows\clink\install\all.ps1
 
 param(
     [switch]$Minimal,
@@ -32,7 +32,8 @@ if (-not $NoProxy -and -not $PSBoundParameters.ContainsKey('Proxy')) {
     $Proxy = $defaultProxy
 }
 
-. "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
+. "$PSScriptRoot\common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
+Ensure-DotDirAndClinkProfile
 
 $elevateParams = @{}
 foreach ($key in $PSBoundParameters.Keys) {
@@ -43,9 +44,12 @@ if ($NoProxy) { $elevateParams['NoProxy'] = $true }
 Ensure-SymbolicLinkPrivilege -BoundParameters $elevateParams
 
 $steps = @(
+    @{ Name = 'clink'; Script = 'clink.ps1'; Args = @{} }
+    @{ Name = 'tools'; Script = 'tools.ps1'; Args = @{} }
+    @{ Name = 'apps'; Script = 'apps.ps1'; Args = @{} }
     @{ Name = 'z.lua'; Script = 'z.ps1'; Args = @{} }
-    @{ Name = 'clink-fzf'; Script = 'clink-fzf.ps1'; Args = @{ Minimal = $Minimal; NoBindings = $NoBindings } }
-    @{ Name = 'clink-gizmos'; Script = 'clink-gizmos.ps1'; Args = @{} }
+    @{ Name = 'fzf'; Script = 'fzf.ps1'; Args = @{ Minimal = $Minimal; NoBindings = $NoBindings } }
+    @{ Name = 'gizmos'; Script = 'gizmos.ps1'; Args = @{} }
     @{ Name = 'dirx'; Script = 'dirx.ps1'; Args = @{} }
 )
 
@@ -70,4 +74,4 @@ foreach ($step in $steps) {
 Add-UserPathEntry -Dir $ClinkProfileDir
 
 Write-Host ""
-Write-Host 'All install scripts finished. Restart the terminal so PATH and Clink pick up the new links.'
+Write-Host 'All install scripts finished. Restart the terminal so CLINK_PROFILE, PATH, and Clink pick up the new setup.'

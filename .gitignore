@@ -1,9 +1,14 @@
 *.log
-*.log
 *.zwc
 *.zcompdump
+
+# Clink runtime (written by clink.exe) and generated binaries
 clink_error*
 clink_history*
+windows/clink/clink_settings
+windows/clink/tools/*.exe
+
+# Upstream files symlinked into the Clink profile by install/*.ps1
 windows/clink/z.lua
 windows/clink/z.cmd
 windows/clink/fzf.lua

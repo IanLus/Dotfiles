@@ -1,0 +1,74 @@
+# Install CLI apps with winget into C:\Software\<name>, same update prompt as dirx.ps1.
+# Adds the directory that contains the exe to user PATH (skips if already present).
+#
+#   pwsh -File apps.ps1
+#   pwsh -File apps.ps1 -Name fnm, eza
+
+param(
+    [string[]]$Name,
+    [string]$Version,
+    [string]$Proxy = 'http://127.0.0.1:7890',
+    [switch]$NoProxy
+)
+
+$ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
+
+$script:SoftwareApps = @(
+    @{ Id = 'Schniz.fnm';            Name = 'fnm';      ExeName = 'fnm.exe';      DirName = 'fnm' }
+    @{ Id = 'eza-community.eza';     Name = 'eza';      ExeName = 'eza.exe';      DirName = 'eza' }
+    @{ Id = 'sharkdp.bat';           Name = 'bat';      ExeName = 'bat.exe';      DirName = 'bat' }
+    @{ Id = 'DEVCOM.Lua';            Name = 'lua';      ExeName = 'lua.exe';      DirName = 'Lua' }
+    @{ Id = 'hpjansson.Chafa';       Name = 'chafa';    ExeName = 'chafa.exe';    DirName = 'chafa' }
+    @{ Id = 'Starship.Starship';     Name = 'starship'; ExeName = 'starship.exe'; DirName = 'starship' }
+    @{ Id = 'JesseDuffield.lazygit'; Name = 'lazygit';  ExeName = 'lazygit.exe';  DirName = 'lazygit' }
+)
+
+$wanted = @($script:SoftwareApps)
+if ($Name -and $Name.Count -gt 0) {
+    $lookup = @{ }
+    foreach ($app in $script:SoftwareApps) { $lookup[$app.Name.ToLowerInvariant()] = $app }
+    $selected = [System.Collections.Generic.List[object]]::new()
+    foreach ($item in $Name) {
+        foreach ($part in ($item -split ',')) {
+            $key = $part.Trim().ToLowerInvariant()
+            if (-not $key) { continue }
+            if (-not $lookup.ContainsKey($key)) {
+                $known = ($script:SoftwareApps | ForEach-Object { $_.Name }) -join ', '
+                throw "Unknown app '$part'. Expected one of: $known"
+            }
+            $selected.Add($lookup[$key])
+        }
+    }
+    $wanted = @($selected)
+}
+
+$explicitVersion = $PSBoundParameters.ContainsKey('Version') -and -not [string]::IsNullOrWhiteSpace($Version)
+if ($explicitVersion -and @($wanted).Count -ne 1) {
+    throw '-Version 只能和单个 -Name 一起使用。'
+}
+
+$failed = [System.Collections.Generic.List[string]]::new()
+foreach ($app in $wanted) {
+    Write-Host ""
+    Write-Host "=== $($app.Name) ($($app.Id)) -> $(Join-Path $SoftwareRoot $app.DirName) ==="
+    try {
+        $args = @{
+            Id      = $app.Id
+            Name    = $app.Name
+            ExeName = $app.ExeName
+            DirName = $app.DirName
+        }
+        if ($explicitVersion) { $args.Version = $Version }
+        Install-WingetSoftware @args
+    } catch {
+        Write-Warning $_.Exception.Message
+        $failed.Add($app.Name)
+    }
+}
+
+if ($failed.Count -gt 0) {
+    throw ("apps failed: " + ($failed -join ', '))
+}
+
+Write-Host 'Restart the terminal so PATH picks up any new executables.'

@@ -1,4 +1,4 @@
--- General utilities for Clink (cmd.exe).
+-- Filesystem commands for Clink (cmd.exe).
 -- mkcd <dir>   : create directory if missing, then cd into it
 -- rm [opts]    : bash-like remove files / directories (-r -f -d -v)
 -- which lives in functions/which.lua (shared with fzf preview).
@@ -256,5 +256,5 @@ if clink.onfilterinput then
 		register_clink_lua_command("rm")
 	end
 else
-	print("utils.lua requires a newer version of Clink; please upgrade.")
+	print("fs.lua requires a newer version of Clink; please upgrade.")
 end
