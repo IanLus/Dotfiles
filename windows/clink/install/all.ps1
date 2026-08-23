@@ -4,17 +4,35 @@
 param(
     [switch]$Minimal,
     [switch]$NoBindings,
-    [string]$Proxy = 'http://127.0.0.1:7890',
+    [string]$Proxy,
     [switch]$NoProxy
 )
 
 $ErrorActionPreference = 'Stop'
-. "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
 
-$common = @{
-    Proxy   = $Proxy
-    NoProxy = $NoProxy
+$defaultProxy = 'http://127.0.0.1:7890'
+$envProxy = @(
+    $env:HTTPS_PROXY
+    $env:HTTP_PROXY
+    $env:ALL_PROXY
+    $env:https_proxy
+    $env:http_proxy
+    $env:all_proxy
+) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1
+
+if (-not $NoProxy -and -not $PSBoundParameters.ContainsKey('Proxy')) {
+    if ($envProxy) {
+        $Proxy = $envProxy.Trim()
+        Write-Host "Using proxy from environment: $Proxy"
+    } else {
+        $inputProxy = Read-Host "代理地址 [$defaultProxy]"
+        $Proxy = if ([string]::IsNullOrWhiteSpace($inputProxy)) { $defaultProxy } else { $inputProxy.Trim() }
+    }
+} elseif (-not $NoProxy -and [string]::IsNullOrWhiteSpace($Proxy)) {
+    $Proxy = $defaultProxy
 }
+
+. "$PSScriptRoot\_install-common.ps1" -Proxy $Proxy -NoProxy:$NoProxy
 
 $steps = @(
     @{ Name = 'z.lua'; Script = 'z.ps1'; Args = @{} }

@@ -60,7 +60,7 @@ clink set clink.logo none
 pwsh -File "%CLINK_PROFILE%\install\all.ps1"
 ```
 
-顺序：`z.lua` → `clink-fzf` → `clink-gizmos` → `dirx`，并把 `%CLINK_PROFILE%` 加入用户 PATH。默认经 `http://127.0.0.1:7890` 代理；无代理加 `-NoProxy`。仅核心 fzf 脚本加 `-Minimal`。
+顺序：`z.lua` → `clink-fzf` → `clink-gizmos` → `dirx`，并把 `%CLINK_PROFILE%` 加入用户 PATH。已有 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` 则直接用，不再询问；否则询问代理地址，直接回车用 `http://127.0.0.1:7890`。无代理加 `-NoProxy`；非交互指定代理用 `-Proxy`。仅核心 fzf 脚本加 `-Minimal`。
 
 ## 自定义脚本（`%CLINK_PROFILE%`，即 `%DOTDIR%\windows\clink`）
 
