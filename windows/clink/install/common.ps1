@@ -812,6 +812,15 @@ function Set-ClinkCoreSettings {
     }
 }
 
+function Enable-ClinkStarshipPrompt {
+    Refresh-SessionPath
+    $exe = Find-PathExe -ExeName @('starship.exe', 'starship')
+    if ($exe) {
+        Invoke-ClinkSet -Name 'starship.exepath' -Value $exe | Out-Null
+    }
+    return Set-ClinkStarshipPrompt
+}
+
 function Set-ClinkStarshipPrompt {
     Use-ClinkProfileEnv
     $clink = Ensure-ClinkAvailable

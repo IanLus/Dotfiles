@@ -68,6 +68,10 @@ foreach ($app in $wanted) {
     }
 }
 
+if ($wanted | Where-Object { $_.Name -eq 'starship' }) {
+    Enable-ClinkStarshipPrompt | Out-Null
+}
+
 if ($failed.Count -gt 0) {
     throw ($failed -join '; ')
 }

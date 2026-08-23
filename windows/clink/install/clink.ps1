@@ -16,6 +16,5 @@ if (-not (Install-ClinkIfMissing)) {
 }
 
 Set-ClinkCoreSettings
-Set-ClinkStarshipPrompt | Out-Null
 
 Write-Host 'Done. Restart the terminal so CLINK_PROFILE and PATH take effect.'
