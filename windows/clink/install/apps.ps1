@@ -20,7 +20,7 @@ $script:SoftwareApps = @(
     @{ Id = 'sharkdp.bat';           Name = 'bat';      ExeName = 'bat.exe';      DirName = 'bat' }
     @{ Id = 'DEVCOM.Lua';            Name = 'lua';      ExeName = 'lua.exe';      DirName = 'Lua' }
     @{ Id = 'hpjansson.Chafa';       Name = 'chafa';    ExeName = 'chafa.exe';    DirName = 'chafa' }
-    @{ Id = 'Starship.Starship';     Name = 'starship'; ExeName = 'starship.exe'; DirName = 'starship' }
+    @{ Id = 'Starship.Starship';     Name = 'starship'; ExeName = 'starship.exe'; DirName = 'starship'; LocationIgnored = $true }
     @{ Id = 'JesseDuffield.lazygit'; Name = 'lazygit';  ExeName = 'lazygit.exe';  DirName = 'lazygit' }
 )
 
@@ -60,6 +60,7 @@ foreach ($app in $wanted) {
             DirName = $app.DirName
         }
         if ($explicitVersion) { $args.Version = $Version }
+        if ($app.LocationIgnored) { $args.LocationIgnored = $true }
         Install-WingetSoftware @args
     } catch {
         Write-Warning $_.Exception.Message

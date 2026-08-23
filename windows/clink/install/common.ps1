@@ -491,6 +491,16 @@ function Confirm-SoftwareUpdate {
     return [string]::IsNullOrWhiteSpace($ans) -or $ans -match '^[Yy]'
 }
 
+function Confirm-WingetLocationIgnored {
+    param(
+        [string]$Name,
+        [string]$InstallDir
+    )
+    Write-Host "winget 安装 $Name 时 --location 无效，不会装到 $InstallDir，一般会落到 Program Files。" -ForegroundColor Yellow
+    $ans = Read-Host "是否仍用 winget 继续安装 $Name？[Y/n]"
+    return [string]::IsNullOrWhiteSpace($ans) -or $ans -match '^[Yy]'
+}
+
 function Invoke-WingetLocate {
     param(
         [string]$Id,
@@ -535,7 +545,8 @@ function Install-WingetSoftware {
         [string]$Name,
         [string[]]$ExeName,
         [string]$DirName,
-        [string]$Version
+        [string]$Version,
+        [switch]$LocationIgnored
     )
     $installDir = Join-Path $script:SoftwareRoot $DirName
     $exe = Find-InstallExe -InstallDir $installDir -ExeName $ExeName
@@ -582,6 +593,12 @@ function Install-WingetSoftware {
             }
         }
     } else {
+        if ($LocationIgnored) {
+            if (-not (Confirm-WingetLocationIgnored -Name $Name -InstallDir $installDir)) {
+                Write-Host "跳过安装 $Name"
+                return
+            }
+        }
         if (-not (Test-Path -LiteralPath $installDir)) {
             New-Item -ItemType Directory -Path $installDir -Force | Out-Null
         }
@@ -592,6 +609,18 @@ function Install-WingetSoftware {
 
     Refresh-SessionPath
     $exe = Find-InstallExe -InstallDir $installDir -ExeName $ExeName
+    if (-not $exe -and $LocationIgnored) {
+        foreach ($name in $ExeName) {
+            $cmd = Get-Command $name -ErrorAction SilentlyContinue
+            if ($cmd -and $cmd.Source) {
+                $exe = $cmd.Source
+                break
+            }
+        }
+        if ($exe) {
+            Write-Warning "$Name 已安装，但不在 $installDir：$exe"
+        }
+    }
     if (-not $exe) {
         throw "$Name 已通过 winget 处理，但 $installDir 下没有 $exeLabel"
     }
