@@ -1,14 +1,19 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 set "ROOT=%~1"
-if "%ROOT%"=="" set "ROOT=."
+if "!ROOT!"=="" set "ROOT=."
 
-where dirx.exe >nul 2>&1
-if errorlevel 1 exit /b 1
+rem `"windows\"` would make dirx print `windows\\foo`. Trailing slashes must go.
+:strip
+if "!ROOT!"=="" set "ROOT=."
+if "!ROOT:~-1!"=="\" (
+	set "ROOT=!ROOT:~0,-1!"
+	goto strip
+)
+if "!ROOT:~-1!"=="/" (
+	set "ROOT=!ROOT:~0,-1!"
+	goto strip
+)
 
-pushd "%ROOT%" 2>nul
-if errorlevel 1 exit /b 1
-dirx.exe /b /s /X:d /a:-s-h --bare-relative --utf8 .
-set "EC=%ERRORLEVEL%"
-popd 2>nul
-exit /b %EC%
+rem Stay in the caller's cwd so `windows\**<Tab>` lists `windows\foo` (pwd-relative).
+dirx.exe /b /s /X:d /a:-s-h --bare-relative --utf8 "!ROOT!"

@@ -1,14 +1,17 @@
 @echo off
-setlocal
+setlocal EnableDelayedExpansion
 set "ROOT=%~1"
-if "%ROOT%"=="" set "ROOT=."
+if "!ROOT!"=="" set "ROOT=."
 
-where dirx.exe >nul 2>&1
-if errorlevel 1 exit /b 1
+:strip
+if "!ROOT!"=="" set "ROOT=."
+if "!ROOT:~-1!"=="\" (
+	set "ROOT=!ROOT:~0,-1!"
+	goto strip
+)
+if "!ROOT:~-1!"=="/" (
+	set "ROOT=!ROOT:~0,-1!"
+	goto strip
+)
 
-pushd "%ROOT%" 2>nul
-if errorlevel 1 exit /b 1
-dirx.exe /b /s /X:d /a:d-s-h --bare-relative --utf8 .
-set "EC=%ERRORLEVEL%"
-popd 2>nul
-exit /b %EC%
+dirx.exe /b /s /X:d /a:d-s-h --bare-relative --utf8 "!ROOT!"
