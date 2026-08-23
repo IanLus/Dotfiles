@@ -145,39 +145,37 @@ local function which_resolve(name, seen)
 	return name
 end
 
+local function which_print_lines(name)
+	if is_lua_command(name) then
+		return { name .. ": Clink Lua command" }
+	end
+
+	local alias = os.getalias and os.getalias(name)
+	if alias and alias ~= "" then
+		return { string.format("%s: Alias for (%s)", name, which_resolve(name)) }
+	end
+
+	if is_cmd_builtin(name) then
+		return { name .. ": CMD internal command" }
+	end
+
+	local paths = where_paths(name)
+	if #paths > 0 then
+		return paths
+	end
+
+	return { name .. ": not found" }
+end
+
 local function which_cmd(rest)
 	local name = first_arg(rest)
 	if not name then
 		print("用法: which <name>")
 		return "", false
 	end
-
-	-- Lua commands are also doskey aliases (for color/completion); report them as Lua cmds.
-	if is_lua_command(name) then
-		print(name .. ": Clink Lua command")
-		return "", false
+	for _, line in ipairs(which_print_lines(name)) do
+		print(line)
 	end
-
-	local alias = os.getalias and os.getalias(name)
-	if alias and alias ~= "" then
-		print(string.format("%s: Alias for (%s)", name, which_resolve(name)))
-		return "", false
-	end
-
-	if is_cmd_builtin(name) then
-		print(name .. ": CMD internal command")
-		return "", false
-	end
-
-	local paths = where_paths(name)
-	if #paths > 0 then
-		for _, p in ipairs(paths) do
-			print(p)
-		end
-		return "", false
-	end
-
-	print(name .. ": not found")
 	return "", false
 end
 
