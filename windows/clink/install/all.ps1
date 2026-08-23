@@ -67,7 +67,7 @@ foreach ($step in $steps) {
     try {
         & $path @invoke
     } catch {
-        throw "$($step.Name) failed: $($_.Exception.Message)"
+        throw "$($step.Name): $($_.Exception.Message)"
     }
 }
 

@@ -477,6 +477,25 @@ function Find-InstallExe {
     return $null
 }
 
+function Find-PathExe {
+    param([string[]]$ExeName)
+    $names = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in $ExeName) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        foreach ($candidate in @($name, [IO.Path]::GetFileNameWithoutExtension($name))) {
+            if ($candidate -and -not $names.Contains($candidate)) {
+                $names.Add($candidate)
+            }
+        }
+    }
+    foreach ($name in $names) {
+        $cmd = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($cmd -and $cmd.Source) { return $cmd.Source }
+    }
+    return $null
+}
+
 function Confirm-SoftwareUpdate {
     param(
         [string]$Name,
@@ -501,21 +520,51 @@ function Confirm-WingetLocationIgnored {
     return [string]::IsNullOrWhiteSpace($ans) -or $ans -match '^[Yy]'
 }
 
+function Find-CommonDirExe {
+    param(
+        [string[]]$ExeName,
+        [string]$DirName
+    )
+    $roots = @(
+        $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Programs\$DirName" })
+        $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles $DirName })
+        $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} $DirName })
+    ) | Where-Object { $_ }
+    foreach ($root in $roots) {
+        $found = Find-InstallExe -InstallDir $root -ExeName $ExeName
+        if ($found) { return $found }
+    }
+    return $null
+}
+
+function Find-CommandOrCommonExe {
+    param(
+        [string[]]$ExeName,
+        [string]$DirName
+    )
+    $pathExe = Find-PathExe -ExeName $ExeName
+    if ($pathExe) { return $pathExe }
+    return Find-CommonDirExe -ExeName $ExeName -DirName $DirName
+}
+
 function Invoke-WingetLocate {
     param(
         [string]$Id,
         [string]$Location,
         [string]$Version,
-        [switch]$Upgrade
+        [switch]$Upgrade,
+        [switch]$SkipLocation
     )
     $base = @(
         $(if ($Upgrade) { 'upgrade' } else { 'install' })
         '-e', '--id', $Id, '--source', 'winget'
         '--accept-package-agreements', '--accept-source-agreements'
         '--disable-interactivity'
-        '--location', $Location
         '--force'
     )
+    if (-not $SkipLocation) {
+        $base += @('--location', $Location)
+    }
     if ($Version) {
         $base += @('--version', $Version)
     }
@@ -546,10 +595,12 @@ function Install-WingetSoftware {
         [string[]]$ExeName,
         [string]$DirName,
         [string]$Version,
-        [switch]$LocationIgnored
+        [switch]$LocationIgnored,
+        [switch]$SkipLocation
     )
     $installDir = Join-Path $script:SoftwareRoot $DirName
-    $exe = Find-InstallExe -InstallDir $installDir -ExeName $ExeName
+    Refresh-SessionPath
+    $exe = Find-PathExe -ExeName $ExeName
     $exeLabel = $ExeName -join '/'
     $explicitVersion = -not [string]::IsNullOrWhiteSpace($Version)
     $targetTag = if ($explicitVersion) { $Version } else { $null }
@@ -563,7 +614,7 @@ function Install-WingetSoftware {
                 Write-Warning "无法查询 $Name 最新版本，保留已安装的 $exe"
                 return
             }
-            throw "无法查询 $Name 最新版本，且未在 $installDir 找到 $exeLabel。检查网络或代理后重试，或使用 -Version 指定版本。"
+            throw "无法查询 $Name 最新版本，且 PATH 上找不到 $exeLabel。检查网络或代理后重试，或使用 -Version 指定版本。"
         }
         Write-Host -NoNewline '最新版本: '
         Write-Host $targetTag -ForegroundColor Green
@@ -587,8 +638,16 @@ function Install-WingetSoftware {
             Write-Host "跳过更新，保留 $currentLabel"
             return
         }
-        if (-not (Invoke-WingetLocate -Id $Id -Location $installDir -Version $targetTag -Upgrade)) {
-            if (-not (Invoke-WingetLocate -Id $Id -Location $installDir -Version $targetTag)) {
+        $locate = @{
+            Id       = $Id
+            Location = $installDir
+            Version  = $targetTag
+            Upgrade  = $true
+        }
+        if ($SkipLocation) { $locate.SkipLocation = $true }
+        if (-not (Invoke-WingetLocate @locate)) {
+            $locate.Remove('Upgrade')
+            if (-not (Invoke-WingetLocate @locate)) {
                 throw "winget 更新 $Name ($Id) 失败"
             }
         }
@@ -598,31 +657,36 @@ function Install-WingetSoftware {
                 Write-Host "跳过安装 $Name"
                 return
             }
+        } elseif ($SkipLocation) {
+            Write-Host "winget 安装 $Name 不支持 --location，将使用安装程序默认目录（不是 $installDir）。" -ForegroundColor Yellow
         }
-        if (-not (Test-Path -LiteralPath $installDir)) {
+        if (-not $SkipLocation -and -not (Test-Path -LiteralPath $installDir)) {
             New-Item -ItemType Directory -Path $installDir -Force | Out-Null
         }
-        if (-not (Invoke-WingetLocate -Id $Id -Location $installDir -Version $targetTag)) {
-            throw "winget 安装 $Name ($Id) 到 $installDir 失败"
+        $locate = @{
+            Id       = $Id
+            Location = $installDir
+            Version  = $targetTag
+        }
+        if ($SkipLocation) { $locate.SkipLocation = $true }
+        if (-not (Invoke-WingetLocate @locate)) {
+            throw "winget 安装 $Name ($Id) 失败"
         }
     }
 
     Refresh-SessionPath
-    $exe = Find-InstallExe -InstallDir $installDir -ExeName $ExeName
-    if (-not $exe -and $LocationIgnored) {
-        foreach ($name in $ExeName) {
-            $cmd = Get-Command $name -ErrorAction SilentlyContinue
-            if ($cmd -and $cmd.Source) {
-                $exe = $cmd.Source
-                break
-            }
-        }
+    $exe = Find-PathExe -ExeName $ExeName
+    if (-not $exe) {
+        $exe = Find-InstallExe -InstallDir $installDir -ExeName $ExeName
+    }
+    if (-not $exe -and ($LocationIgnored -or $SkipLocation)) {
+        $exe = Find-CommonDirExe -ExeName $ExeName -DirName $DirName
         if ($exe) {
-            Write-Warning "$Name 已安装，但不在 $installDir：$exe"
+            Write-Warning "$Name 已安装，但不在 PATH 上：$exe"
         }
     }
     if (-not $exe) {
-        throw "$Name 已通过 winget 处理，但 $installDir 下没有 $exeLabel"
+        throw "$Name 已通过 winget 处理，但 PATH 上找不到 $exeLabel"
     }
     Add-InstallExePath -ExePath $exe
     Write-Host "Installed $Name $targetTag -> $exe" -ForegroundColor Green

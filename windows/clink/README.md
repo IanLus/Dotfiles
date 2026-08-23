@@ -47,7 +47,7 @@ winget 包（以及 dirx 的 GitHub release）查最新版，过期则询问是�
 | 脚本 | 来源 | 装到 |
 |------|------|------|
 | `clink.ps1` | winget `chrisant996.Clink` | `%SOFTWARE_HOME%\clink` |
-| `apps.ps1` | winget：fnm、eza、bat、Lua、chafa、starship、lazygit | `%SOFTWARE_HOME%\<名>`（Lua 的 PATH 是 `Lua\bin`；starship 的 `--location` 无效，安装前会询问是否继续） |
+| `apps.ps1` | winget：fnm、eza、bat、Lua、chafa、starship、lazygit | `%SOFTWARE_HOME%\<名>`（Lua 的 WiX 安装器不支持 `--location`，落到默认目录，PATH 仍加 `lua.exe` 所在处；starship 的 `--location` 无效，安装前会询问是否继续） |
 | `fzf.ps1` | git `clink-fzf`；winget `junegunn.fzf` | `%SOFTWARE_HOME%\clink-plugins\clink-fzf`；`%SOFTWARE_HOME%\fzf` |
 | `z.ps1` | git `z.lua` | `%SOFTWARE_HOME%\clink-plugins\z.lua`（`Z_LUA_HOME` 可覆盖） |
 | `gizmos.ps1` | git `clink-gizmos` | `%SOFTWARE_HOME%\clink-plugins\clink-gizmos` |

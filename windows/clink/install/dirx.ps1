@@ -157,6 +157,7 @@ function Move-DirxIfPresent {
 Move-DirxIfPresent -From $strayRootExe
 Move-DirxIfPresent -From $legacyClinkExe
 Remove-UserPathEntry -Dir $SoftwareRoot
+Refresh-SessionPath
 
 $explicitVersion = $PSBoundParameters.ContainsKey('Version') -and -not [string]::IsNullOrWhiteSpace($Version)
 if ($explicitVersion) {
@@ -165,12 +166,13 @@ if ($explicitVersion) {
     Write-Host '查询 dirx 最新版本...'
     $targetTag = Get-DirxLatestTag
     if (-not $targetTag) {
-        if (Test-Path -LiteralPath $exe) {
-            Add-UserPathEntry -Dir $InstallDir
-            Write-Warning "无法查询 dirx 最新版本，保留已安装的 $exe"
+        $pathExe = Find-PathExe -ExeName @('dirx.exe', 'dirx')
+        if ($pathExe) {
+            Add-UserPathEntry -Dir (Split-Path -Parent $pathExe)
+            Write-Warning "无法查询 dirx 最新版本，保留已安装的 $pathExe"
             return
         }
-        throw '无法查询 dirx 最新版本，且未安装 dirx.exe。检查网络或代理后重试，或使用 -Version 指定版本。'
+        throw '无法查询 dirx 最新版本，且 PATH 上找不到 dirx。检查网络或代理后重试，或使用 -Version 指定版本。'
     }
     Write-Host -NoNewline '最新版本: '
     Write-Host $targetTag -ForegroundColor Green
@@ -181,11 +183,12 @@ if (-not $targetVer) {
     throw "Invalid dirx version: $targetTag"
 }
 
-if (Test-Path -LiteralPath $exe) {
-    $installedVer = Get-InstalledDirxVersion $exe
-    Add-UserPathEntry -Dir $InstallDir
+$pathExe = Find-PathExe -ExeName @('dirx.exe', 'dirx')
+if ($pathExe) {
+    $installedVer = Get-InstalledDirxVersion $pathExe
+    Add-UserPathEntry -Dir (Split-Path -Parent $pathExe)
     if ($installedVer -and $installedVer -ge $targetVer) {
-        Write-Host "dirx 已是最新版本: $(Format-DirxVersion $installedVer) ($exe)"
+        Write-Host "dirx 已是最新版本: $(Format-DirxVersion $installedVer) ($pathExe)"
         return
     }
     $currentLabel = if ($installedVer) { Format-DirxVersion $installedVer } else { '未知版本' }

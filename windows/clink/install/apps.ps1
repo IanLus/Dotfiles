@@ -1,5 +1,5 @@
-# Install CLI apps with winget into C:\Software\<name>, same update prompt as dirx.ps1.
-# Adds the directory that contains the exe to user PATH (skips if already present).
+# Install CLI apps with winget. Already-installed is PATH (lua / lua.exe), not SOFTWARE_HOME.
+# New installs prefer C:\Software\<name>; then add the exe directory to user PATH.
 #
 #   pwsh -File apps.ps1
 #   pwsh -File apps.ps1 -Name fnm, eza
@@ -18,7 +18,7 @@ $script:SoftwareApps = @(
     @{ Id = 'Schniz.fnm';            Name = 'fnm';      ExeName = 'fnm.exe';      DirName = 'fnm' }
     @{ Id = 'eza-community.eza';     Name = 'eza';      ExeName = 'eza.exe';      DirName = 'eza' }
     @{ Id = 'sharkdp.bat';           Name = 'bat';      ExeName = 'bat.exe';      DirName = 'bat' }
-    @{ Id = 'DEVCOM.Lua';            Name = 'lua';      ExeName = 'lua.exe';      DirName = 'Lua' }
+    @{ Id = 'DEVCOM.Lua';            Name = 'lua';      ExeName = 'lua.exe';      DirName = 'Lua'; SkipLocation = $true }
     @{ Id = 'hpjansson.Chafa';       Name = 'chafa';    ExeName = 'chafa.exe';    DirName = 'chafa' }
     @{ Id = 'Starship.Starship';     Name = 'starship'; ExeName = 'starship.exe'; DirName = 'starship'; LocationIgnored = $true }
     @{ Id = 'JesseDuffield.lazygit'; Name = 'lazygit';  ExeName = 'lazygit.exe';  DirName = 'lazygit' }
@@ -61,15 +61,16 @@ foreach ($app in $wanted) {
         }
         if ($explicitVersion) { $args.Version = $Version }
         if ($app.LocationIgnored) { $args.LocationIgnored = $true }
+        if ($app.SkipLocation) { $args.SkipLocation = $true }
         Install-WingetSoftware @args
     } catch {
         Write-Warning $_.Exception.Message
-        $failed.Add($app.Name)
+        $failed.Add("$($app.Name): $($_.Exception.Message)")
     }
 }
 
 if ($failed.Count -gt 0) {
-    throw ("apps failed: " + ($failed -join ', '))
+    throw ($failed -join '; ')
 }
 
 Write-Host 'Restart the terminal so PATH picks up any new executables.'
