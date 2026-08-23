@@ -552,19 +552,16 @@ function Invoke-WingetLocate {
         [string]$Id,
         [string]$Location,
         [string]$Version,
-        [switch]$Upgrade,
-        [switch]$SkipLocation
+        [switch]$Upgrade
     )
     $base = @(
         $(if ($Upgrade) { 'upgrade' } else { 'install' })
         '-e', '--id', $Id, '--source', 'winget'
         '--accept-package-agreements', '--accept-source-agreements'
         '--disable-interactivity'
+        '--location', $Location
         '--force'
     )
-    if (-not $SkipLocation) {
-        $base += @('--location', $Location)
-    }
     if ($Version) {
         $base += @('--version', $Version)
     }
@@ -595,8 +592,7 @@ function Install-WingetSoftware {
         [string[]]$ExeName,
         [string]$DirName,
         [string]$Version,
-        [switch]$LocationIgnored,
-        [switch]$SkipLocation
+        [switch]$LocationIgnored
     )
     $installDir = Join-Path $script:SoftwareRoot $DirName
     Refresh-SessionPath
@@ -638,16 +634,8 @@ function Install-WingetSoftware {
             Write-Host "跳过更新，保留 $currentLabel"
             return
         }
-        $locate = @{
-            Id       = $Id
-            Location = $installDir
-            Version  = $targetTag
-            Upgrade  = $true
-        }
-        if ($SkipLocation) { $locate.SkipLocation = $true }
-        if (-not (Invoke-WingetLocate @locate)) {
-            $locate.Remove('Upgrade')
-            if (-not (Invoke-WingetLocate @locate)) {
+        if (-not (Invoke-WingetLocate -Id $Id -Location $installDir -Version $targetTag -Upgrade)) {
+            if (-not (Invoke-WingetLocate -Id $Id -Location $installDir -Version $targetTag)) {
                 throw "winget 更新 $Name ($Id) 失败"
             }
         }
@@ -657,19 +645,11 @@ function Install-WingetSoftware {
                 Write-Host "跳过安装 $Name"
                 return
             }
-        } elseif ($SkipLocation) {
-            Write-Host "winget 安装 $Name 不支持 --location，将使用安装程序默认目录（不是 $installDir）。" -ForegroundColor Yellow
         }
-        if (-not $SkipLocation -and -not (Test-Path -LiteralPath $installDir)) {
+        if (-not (Test-Path -LiteralPath $installDir)) {
             New-Item -ItemType Directory -Path $installDir -Force | Out-Null
         }
-        $locate = @{
-            Id       = $Id
-            Location = $installDir
-            Version  = $targetTag
-        }
-        if ($SkipLocation) { $locate.SkipLocation = $true }
-        if (-not (Invoke-WingetLocate @locate)) {
+        if (-not (Invoke-WingetLocate -Id $Id -Location $installDir -Version $targetTag)) {
             throw "winget 安装 $Name ($Id) 失败"
         }
     }
@@ -679,7 +659,7 @@ function Install-WingetSoftware {
     if (-not $exe) {
         $exe = Find-InstallExe -InstallDir $installDir -ExeName $ExeName
     }
-    if (-not $exe -and ($LocationIgnored -or $SkipLocation)) {
+    if (-not $exe -and $LocationIgnored) {
         $exe = Find-CommonDirExe -ExeName $ExeName -DirName $DirName
         if ($exe) {
             Write-Warning "$Name 已安装，但不在 PATH 上：$exe"
