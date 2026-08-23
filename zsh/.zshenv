@@ -25,4 +25,12 @@ fi
 if [ -z "$NVIM" ]; then
   # fnm 来自CARGO_HOME/bin
   eval "$(fnm env --use-on-cd --version-file-strategy=recursive --resolve-engines --shell zsh)"
+  # fnm 不会在退出时删除本会话的 FNM_MULTISHELL_PATH 符号链接
+  _dotfiles_fnm_cleanup() {
+    if [[ -n $FNM_MULTISHELL_PATH && $FNM_MULTISHELL_PATH == *fnm_multishells* ]]; then
+      rm -f -- "$FNM_MULTISHELL_PATH" 2>/dev/null
+    fi
+  }
+  autoload -Uz add-zsh-hook
+  add-zsh-hook zshexit _dotfiles_fnm_cleanup
 fi
