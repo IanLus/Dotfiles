@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 
-rem Readable paths (cmd/js/text/...) -> lessfilter.sh. Binaries, aliases, Lua commands -> which.
+rem Readable paths -> eza/bat/chafa. Binaries, aliases, Lua commands -> which.
 
 if "%~1" == "" goto :end
 
@@ -29,7 +29,7 @@ for %%F in ("!__FILE!") do (
 	set "__EXT=%%~xF"
 )
 
-if /i "!__ATTR:~0,1!" == "d" goto :preview_path
+if /i "!__ATTR:~0,1!" == "d" goto :preview_dir
 
 set "__BIN="
 if /i "!__EXT!" == ".exe" set "__BIN=1"
@@ -43,7 +43,7 @@ if /i "!__EXT!" == ".ocx" set "__BIN=1"
 
 if exist "!__FILE!" (
 	if defined __BIN goto :preview_binary
-	goto :preview_path
+	goto :preview_file
 )
 
 rem Missing path-like names are not commands.
@@ -53,8 +53,34 @@ if "!__FILE:~0,1!" == "." goto :end
 
 goto :preview_command
 
-:preview_path
-call "%~dp0lessfilter.cmd" "!__FILE!"
+:preview_dir
+rem Same flags as less/lessfilter.sh, but invoked from cmd (no Git bash).
+eza --git -ahl --color=always --icons=always -- "!__FILE!"
+goto :end
+
+:preview_file
+if /i "!__EXT!" == ".png" goto :preview_image
+if /i "!__EXT!" == ".jpg" goto :preview_image
+if /i "!__EXT!" == ".jpeg" goto :preview_image
+if /i "!__EXT!" == ".gif" goto :preview_image
+if /i "!__EXT!" == ".webp" goto :preview_image
+if /i "!__EXT!" == ".bmp" goto :preview_image
+if /i "!__EXT!" == ".ico" goto :preview_image
+if /i "!__EXT!" == ".tif" goto :preview_image
+if /i "!__EXT!" == ".tiff" goto :preview_image
+if /i "!__EXT!" == ".svg" goto :preview_image
+if /i "!__EXT!" == ".avif" goto :preview_image
+goto :preview_text
+
+:preview_image
+if "!__FILE:~0,1!" == "-" goto :preview_text
+set "__CHAFA_OPTS="
+if not "!CLINK_FZF_PREVIEW_SIXELS!" == "" set "__CHAFA_OPTS=-f sixels"
+2>nul chafa !__CHAFA_OPTS! "!__FILE!"
+if not errorlevel 1 goto :end
+
+:preview_text
+bat --force-colorization --style=numbers,changes --line-range=:500 -- "!__FILE!"
 goto :end
 
 :preview_binary
@@ -84,8 +110,9 @@ if errorlevel 1 (
 set /p __TARGET=<"!__OUT!"
 del "!__OUT!" 2>nul
 if not defined __TARGET goto :end
-call "%~dp0lessfilter.cmd" "!__TARGET!"
-goto :end
+set "__FILE=!__TARGET!"
+for %%F in ("!__FILE!") do set "__EXT=%%~xF"
+goto :preview_file
 
 :preview_which
 where.exe "!__FILE!" 2>nul

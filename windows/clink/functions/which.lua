@@ -270,7 +270,7 @@ function M.is_binary_path(path)
 	return binary_ext[path_ext(path)] == true
 end
 
--- fzf-preview.cmd --preview: readable PATH scripts return the file to lessfilter;
+-- fzf-preview.cmd --preview: readable PATH scripts return the file to bat/eza;
 -- aliases, Lua commands, builtins, and binaries stay as which text.
 -- Returns kind "file" + path, "which" + lines, or "missing".
 function M.preview_target(name, backend)

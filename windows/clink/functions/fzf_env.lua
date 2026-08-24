@@ -23,12 +23,7 @@ if command_on_path("dirx.exe") then
 	set_default("FZF_ALT_C_COMMAND", "fzf-list-dirs.cmd $dir")
 end
 
--- Ctrl+T path preview: same as common_shell_env/common_env (`less {}` + LESSOPEN).
 -- Alt+C stays reverse-only; do not copy common_env's tree preview.
-set_default("LESSOPEN", "|lessfilter.cmd %s")
-
--- Path items still go through lessfilter.sh (same as Linux `less {}` + LESSOPEN).
--- fzf-preview.cmd only intercepts binaries / aliases / Lua commands for `which`.
 local fzf_file_opts = table.concat({
 	"--layout=reverse",
 	'--preview "fzf-preview.cmd {}"',
