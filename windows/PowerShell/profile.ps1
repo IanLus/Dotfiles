@@ -37,19 +37,32 @@ Invoke-ProfileHook fnm {
     }
     & fnm @fnmArgs | Out-String | Invoke-Expression
 
-    # fnm leaves FNM_MULTISHELL_PATH behind. Exiting covers `exit`; the waiter
-    # also covers closing the Windows Terminal tab (Exiting often does not run).
+    # fnm leaves FNM_MULTISHELL_PATH behind. Closing a WT tab skips
+    # PowerShell.Exiting; the waiter covers that. Live profile is often
+    # Documents\PowerShell\profile.ps1, so do not resolve the exe via $PSScriptRoot.
     if ($env:FNM_MULTISHELL_PATH) {
-        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -SupportEvent -MessageData $env:FNM_MULTISHELL_PATH -Action {
+        $fnmLink = $env:FNM_MULTISHELL_PATH
+        Register-EngineEvent -SourceIdentifier PowerShell.Exiting -MessageData $fnmLink -Action {
             $target = $Event.MessageData
-            if ($target -and ($target -like '*fnm_multishells*') -and (Test-Path -LiteralPath $target)) {
-                Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+            if (-not $target -or $target -notlike '*fnm_multishells*') { return }
+            try { [IO.Directory]::Delete($target) } catch {
+                try { [IO.File]::Delete($target) } catch {}
             }
         } | Out-Null
 
-        $cleanupExe = Join-Path $PSScriptRoot '..\clink\tools\fnm_multishell_cleanup.exe'
-        if (Test-Path -LiteralPath $cleanupExe) {
-            Start-Process -FilePath $cleanupExe -ArgumentList @("$PID", $env:FNM_MULTISHELL_PATH) -WindowStyle Hidden -ErrorAction SilentlyContinue
+        $cleanupExe = @(
+            $(if ($env:CLINK_PROFILE) {
+                Join-Path ([Environment]::ExpandEnvironmentVariables($env:CLINK_PROFILE)) 'tools\fnm_multishell_cleanup.exe'
+            })
+            $(if ($env:DOTDIR) {
+                Join-Path ([Environment]::ExpandEnvironmentVariables($env:DOTDIR)) 'windows\clink\tools\fnm_multishell_cleanup.exe'
+            })
+            (Join-Path $PSScriptRoot '..\clink\tools\fnm_multishell_cleanup.exe')
+        ) | Where-Object { $_ } | ForEach-Object { [IO.Path]::GetFullPath($_) } |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            Select-Object -First 1
+        if ($cleanupExe) {
+            Start-Process -FilePath $cleanupExe -ArgumentList @("$PID", $fnmLink) -WindowStyle Hidden -ErrorAction SilentlyContinue
         }
     }
 }
