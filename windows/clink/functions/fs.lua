@@ -103,8 +103,15 @@ local function path_exists(path)
 	return false, nil
 end
 
--- Junction / directory symlink: never del or rmdir /s — those follow into the
--- target (fnm_multishells → the real Node dir).
+local function rm_exec(cmd)
+	if os.execute then
+		os.execute(cmd)
+	end
+end
+
+-- NTFS reparse points (directory/file symlink, junction, mount point, etc.):
+-- rm -rf must unlink the entry only, never walk the target. Hard links are not
+-- reparse points: removing a name is correct (data stays if another name remains).
 local function is_reparse_point(path)
 	local p = io.popen("fsutil reparsepoint query " .. quote_cmd(path) .. " 2>nul")
 	if not p then
@@ -113,6 +120,24 @@ local function is_reparse_point(path)
 	local out = p:read("*a") or ""
 	p:close()
 	return out:find("Reparse Tag", 1, true) ~= nil
+end
+
+local function rm_reparse_entry(path)
+	if os.isdir and os.isdir(path) then
+		if os.rmdir then
+			return os.rmdir(path)
+		end
+		rm_exec("rmdir " .. quote_cmd(path))
+		return true
+	end
+	if os.unlink then
+		return os.unlink(path)
+	end
+	if os.remove then
+		return os.remove(path)
+	end
+	rm_exec("del /q " .. quote_cmd(path))
+	return true
 end
 
 local function glob_expand(path)
@@ -161,12 +186,6 @@ local function glob_expand(path)
 		end
 	end
 	return matches
-end
-
-local function rm_exec(cmd)
-	if os.execute then
-		os.execute(cmd)
-	end
 end
 
 local function rm_cmd(rest)
@@ -243,11 +262,7 @@ local function rm_cmd(rest)
 					if verbose then
 						print("removed link '" .. path .. "'")
 					end
-					if os.rmdir then
-						os.rmdir(path)
-					else
-						rm_exec("rmdir " .. quote_cmd(path))
-					end
+					rm_reparse_entry(path)
 				elseif kind == "dir" then
 					if recursive then
 						if verbose then
