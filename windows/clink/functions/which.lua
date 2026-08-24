@@ -168,7 +168,7 @@ function M.file_backend(profile)
 			listing:close()
 		end
 
-		for name, exp in read_all(profile .. "\\aliases\\aliases.lua"):gmatch(
+		for name, exp in read_all(profile .. "\\aliases\\init.lua"):gmatch(
 			'os%.setalias%s*%(%s*"([^"]+)"%s*,%s*"([^"]*)"'
 		) do
 			aliases[name:lower()] = exp
@@ -247,7 +247,73 @@ function M.lines(name, backend)
 	return { name .. ": not found" }
 end
 
+-- PE / libraries: preview with `which` (path), not file contents.
+local binary_ext = {
+	exe = true,
+	com = true,
+	dll = true,
+	sys = true,
+	scr = true,
+	pyd = true,
+	cpl = true,
+	ocx = true,
+	drv = true,
+	efi = true,
+}
+
+local function path_ext(path)
+	local ext = path:lower():match("%.([^.\\/]+)$")
+	return ext or ""
+end
+
+function M.is_binary_path(path)
+	return binary_ext[path_ext(path)] == true
+end
+
+-- fzf-preview.cmd --preview: readable PATH scripts return the file to lessfilter;
+-- aliases, Lua commands, builtins, and binaries stay as which text.
+-- Returns kind "file" + path, "which" + lines, or "missing".
+function M.preview_target(name, backend)
+	backend = backend or M.backend()
+	if backend.is_lua_command(name) then
+		return "which", { name .. ": Clink Lua command" }
+	end
+	local alias = backend.get_alias(name)
+	if alias and alias ~= "" then
+		return "which", { string.format("%s: Alias for (%s)", name, M.resolve(name, backend)) }
+	end
+	if is_cmd_builtin(name) then
+		return "which", { name .. ": CMD internal command" }
+	end
+	local paths = where_paths(name)
+	if not paths[1] then
+		return "missing", nil
+	end
+	if M.is_binary_path(paths[1]) then
+		return "which", paths
+	end
+	return "file", paths[1]
+end
+
 if not rawget(_G, "clink") then
+	if arg and arg[1] == "--preview" then
+		local name = arg[2]
+		if not name or name == "" then
+			os.exit(2)
+		end
+		local kind, payload = M.preview_target(name, M.file_backend())
+		if kind == "file" then
+			io.stdout:write(payload .. "\n")
+			os.exit(0)
+		end
+		if kind == "which" then
+			for i = 1, #payload do
+				print(payload[i])
+			end
+			os.exit(1)
+		end
+		os.exit(2)
+	end
 	local name = arg and arg[1]
 	if name and name ~= "" then
 		local lines = M.lines(name, M.file_backend())

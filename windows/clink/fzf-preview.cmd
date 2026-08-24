@@ -1,81 +1,93 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
-rem Custom fzf preview script (based on chrisant996/clink-fzf).
-rem Depends on: bat, chafa, eza (all on PATH).
-rem Set CLINK_FZF_PREVIEW_SIXELS=1 for sixel image preview in supported terminals.
+rem Readable paths (cmd/js/text/...) -> lessfilter.sh. Binaries, aliases, Lua commands -> which.
 
 if "%~1" == "" goto :end
 
 rem Strip fzf description suffix (at least 4 spaces before description).
-set __ARG=%~1
-set __DELIMITED=%__ARG:    =	%
-for /f "tokens=1,2 delims=	" %%a in ("%__DELIMITED%") do (
-    set "__FILE=%%a"
-    set __ARG="%%a"
+set "__FILE=%~1"
+set "__DELIMITED=%__FILE:    =	%"
+for /f "tokens=1 delims=	" %%a in ("%__DELIMITED%") do set "__FILE=%%a"
+if "!__FILE!" == "" goto :end
+set "__FILE=%__FILE:/=\%"
+
+rem Path completion after `dir\`: list items are relative to that directory.
+if defined CLINK_FZF_PATH_PREFIX (
+	if not exist "!__FILE!" if exist "!CLINK_FZF_PATH_PREFIX!\!__FILE!" (
+		set "__FILE=!CLINK_FZF_PATH_PREFIX!\!__FILE!"
+	)
 )
 
-if "%__FILE%" == "" goto :end
-
-rem Path completion after `dir\`: list items are relative to that directory,
-rem not pwd. Resolve against CLINK_FZF_PATH_PREFIX when the name is not here.
-if not defined CLINK_FZF_PATH_PREFIX goto :resolve_done
-if exist %__ARG% goto :resolve_done
-if exist %__ARG%\ goto :resolve_done
-set "__JOINED=%CLINK_FZF_PATH_PREFIX%\%__FILE%"
-if exist "%__JOINED%" (
-    set "__FILE=%__JOINED%"
-    set __ARG="%__JOINED%"
-    goto :resolve_done
-)
-if exist "%__JOINED%\" (
-    set "__FILE=%__JOINED%"
-    set __ARG="%__JOINED%"
-)
-:resolve_done
-
-rem Directory: list contents with eza (same as less/lessfilter.sh).
-if exist %__ARG%\ (
-    eza --git -ahl --color=always --icons=always %__ARG%
-    goto :end
+rem Attribute first char is d for directories (junctions included). Do not use
+rem "if exist path\": that is true for files whose parent is a junction
+rem (pnpm node_modules), so eza prints the relative path instead of contents.
+set "__ATTR="
+set "__EXT="
+for %%F in ("!__FILE!") do (
+	set "__ATTR=%%~aF"
+	set "__EXT=%%~xF"
 )
 
-for %%F in (%__ARG%) do set "__EXT=%%~xF"
+if /i "!__ATTR:~0,1!" == "d" goto :preview_path
+
+set "__BIN="
+if /i "!__EXT!" == ".exe" set "__BIN=1"
+if /i "!__EXT!" == ".com" set "__BIN=1"
+if /i "!__EXT!" == ".dll" set "__BIN=1"
+if /i "!__EXT!" == ".sys" set "__BIN=1"
+if /i "!__EXT!" == ".scr" set "__BIN=1"
+if /i "!__EXT!" == ".pyd" set "__BIN=1"
+if /i "!__EXT!" == ".cpl" set "__BIN=1"
+if /i "!__EXT!" == ".ocx" set "__BIN=1"
+
+if exist "!__FILE!" (
+	if defined __BIN goto :preview_binary
+	goto :preview_path
+)
+
+rem Missing path-like names are not commands.
+for %%A in ("!__FILE!") do if /i not "%%~A" == "%%~nxA" goto :end
+if "!__FILE:~1,1!" == ":" goto :end
+if "!__FILE:~0,1!" == "." goto :end
+
+goto :preview_command
+
+:preview_path
+call "%~dp0lessfilter.cmd" "!__FILE!"
+goto :end
+
+:preview_binary
+for %%I in ("!__FILE!") do echo %%~fI
+goto :end
+
+:preview_command
 if not defined CLINK_PROFILE set "CLINK_PROFILE=%~dp0"
-
-rem Binaries, aliases, Lua commands, builtins: resolve only this name (same as `which`).
-if /i "%__EXT%" == ".exe" goto :preview_which
-if /i "%__EXT%" == ".com" goto :preview_which
-if /i "%__EXT%" == ".dll" goto :preview_which
-
-if not exist %__ARG% goto :preview_which
-
-rem Image preview via chafa.
-if x%__ARG:~1,1% == x- goto :try_file
-set __CHAFA_OPTS=
-if not x%CLINK_FZF_PREVIEW_SIXELS% == x set __CHAFA_OPTS=-f sixels
-2>nul chafa %__CHAFA_OPTS% %__ARG%
-if not errorlevel 1 goto :end
-
-rem Text file preview via bat.
-:try_file
-bat --force-colorization --style=numbers,changes --line-range=:500 -- %__ARG%
+set "LUA="
+for /f "delims=" %%P in ('where.exe lua 2^>nul') do (
+	set "LUA=%%P"
+	goto :preview_command_lua
+)
+:preview_command_lua
+if not defined LUA goto :preview_which
+set "__OUT=%TEMP%\clink-fzf-prev-!RANDOM!!RANDOM!.txt"
+"!LUA!" "%~dp0functions\which.lua" --preview "!__FILE!" > "!__OUT!" 2>nul
+if errorlevel 2 (
+	del "!__OUT!" 2>nul
+	goto :end
+)
+if errorlevel 1 (
+	type "!__OUT!"
+	del "!__OUT!" 2>nul
+	goto :end
+)
+set /p __TARGET=<"!__OUT!"
+del "!__OUT!" 2>nul
+if not defined __TARGET goto :end
+call "%~dp0lessfilter.cmd" "!__TARGET!"
 goto :end
 
 :preview_which
-set "LUA="
-for /f "delims=" %%P in ('where.exe lua 2^>nul') do (
-    set "LUA=%%P"
-    goto :preview_which_lua
-)
-:preview_which_lua
-if defined LUA (
-    "%LUA%" "%~dp0functions\which.lua" "%__FILE%" 2>nul
-    if not errorlevel 1 goto :end
-)
-where.exe "%__FILE%" 2>nul
-if errorlevel 1 (
-    if exist %__ARG% echo %__FILE%
-)
+where.exe "!__FILE!" 2>nul
 
 :end

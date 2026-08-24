@@ -23,12 +23,17 @@ if command_on_path("dirx.exe") then
 	set_default("FZF_ALT_C_COMMAND", "fzf-list-dirs.cmd $dir")
 end
 
--- --layout=reverse：输入框在 fzf 窗口顶部（与 Ctrl+R 一致）
+-- Ctrl+T path preview: same as common_shell_env/common_env (`less {}` + LESSOPEN).
+-- Alt+C stays reverse-only; do not copy common_env's tree preview.
+set_default("LESSOPEN", "|lessfilter.cmd %s")
+
+-- Path items still go through lessfilter.sh (same as Linux `less {}` + LESSOPEN).
+-- fzf-preview.cmd only intercepts binaries / aliases / Lua commands for `which`.
 local fzf_file_opts = table.concat({
 	"--layout=reverse",
 	'--preview "fzf-preview.cmd {}"',
-	"--preview-window right,65%,border-left",
-	'--bind "ctrl-/:change-preview-window(down,50%|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up"',
+	"--preview-window 65%",
+	'--bind "ctrl-/:change-preview-window(down|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up"',
 }, " ")
 
 set_default("CLINK_FZF_PREVIEW_SIXELS", "1")
