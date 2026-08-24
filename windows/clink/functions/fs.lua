@@ -103,21 +103,61 @@ local function path_exists(path)
 	return false, nil
 end
 
+-- Junction / directory symlink: never del or rmdir /s — those follow into the
+-- target (fnm_multishells → the real Node dir).
+local function is_reparse_point(path)
+	local p = io.popen("fsutil reparsepoint query " .. quote_cmd(path) .. " 2>nul")
+	if not p then
+		return false
+	end
+	local out = p:read("*a") or ""
+	p:close()
+	return out:find("Reparse Tag", 1, true) ~= nil
+end
+
 local function glob_expand(path)
 	if not path:find("[*?]") then
 		return { path }
 	end
 	local matches = {}
-	if os.glob then
-		local g = os.glob(path)
-		if type(g) == "table" then
-			for _, m in ipairs(g) do
-				if type(m) == "string" and m ~= "" then
-					table.insert(matches, m)
-				elseif type(m) == "table" and m.name then
-					table.insert(matches, m.name)
-				end
-			end
+	local seen = {}
+	local prefix = path:match("^(.*)[\\/][^\\/]*$")
+	local function add(entry)
+		local name = entry
+		if type(entry) == "table" then
+			name = entry.name
+		end
+		if type(name) ~= "string" or name == "" then
+			return
+		end
+		name = name:gsub("[\\/]+$", "")
+		local base = name:match("[^\\/]+$") or name
+		if is_dot_or_dotdot(base) then
+			return
+		end
+		if prefix and prefix ~= "" and not name:match("^[A-Za-z]:") and not name:match("^[\\/]") then
+			name = prefix .. "\\" .. name
+		end
+		if os.getfullpathname then
+			name = os.getfullpathname(name) or name
+		end
+		if not seen[name] then
+			seen[name] = true
+			table.insert(matches, name)
+		end
+	end
+	if os.globfiles then
+		for _, m in ipairs(os.globfiles(path, true) or {}) do
+			add(m)
+		end
+	end
+	if os.globdirs then
+		for _, m in ipairs(os.globdirs(path, true) or {}) do
+			add(m)
+		end
+	elseif os.glob then
+		for _, m in ipairs(os.glob(path) or {}) do
+			add(m)
 		end
 	end
 	return matches
@@ -198,6 +238,15 @@ local function rm_cmd(rest)
 				if not exists then
 					if not force then
 						print("rm: 无法删除 '" .. path .. "': 没有那个文件或目录")
+					end
+				elseif is_reparse_point(path) then
+					if verbose then
+						print("removed link '" .. path .. "'")
+					end
+					if os.rmdir then
+						os.rmdir(path)
+					else
+						rm_exec("rmdir " .. quote_cmd(path))
 					end
 				elseif kind == "dir" then
 					if recursive then
