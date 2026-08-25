@@ -16,6 +16,11 @@ local intercept = false
 local want_more = false
 local pending_query = ""
 local selected_match_text = nil
+local selected_match_is_dir = false
+local dir_only_complete = false
+-- `%dot` / `%DOTDIR%` is env-name completion, not a path. Do not apply `cd`'s
+-- directory-only file filter to those matches.
+local env_name_complete = false
 
 local function join_str(a, b)
 	if not a or a == "" then
@@ -156,16 +161,95 @@ local function relativize_path_display(matches)
 	return matches
 end
 
-local function token_is_dir(token)
-	if not token or token == "" then
+local function is_dir_only_command(line)
+	local cmd = (line or ""):match("^%s*([^%s]+)") or ""
+	cmd = cmd:match("([^/\\]+)$") or cmd
+	if cmd == "" then
 		return false
 	end
-	local path = token
-	if os.expand_env then
-		path = os.expand_env(token) or token
+	local list = os.getenv("FZF_COMPLETION_DIR_COMMANDS") or "cd chdir rd rmdir pushd"
+	cmd = cmd:lower()
+	for c in list:gmatch("%S+") do
+		if cmd == c:lower() then
+			return true
+		end
 	end
-	path = path:gsub('^"(.-)"$', "%1"):gsub("[/\\]+$", "")
+	return false
+end
+
+local function expand_path_token(token)
+	if not token or token == "" then
+		return nil
+	end
+	local path = token:gsub('^"(.-)"$', "%1")
+	local env_name, rest = path:match("^%%([^%%]+)%%([/\\].*)$")
+	if env_name then
+		local root = getenv_expanded(env_name)
+		if not root then
+			return nil
+		end
+		rest = rest:gsub("/", "\\"):gsub("[\\]+$", "")
+		return rest == "" and root or (root .. rest)
+	end
+	if os.expand_env then
+		path = os.expand_env(path) or path
+	end
+	path = path:gsub("[/\\]+$", "")
 	if path == "" then
+		return nil
+	end
+	return path
+end
+
+local function path_has_subdirs(token)
+	local path = expand_path_token(token)
+	if not path then
+		return false
+	end
+	local pattern = path .. "\\*"
+	local items
+	if os.globdirs then
+		local ok, result = pcall(os.globdirs, pattern)
+		if ok then
+			items = result
+		end
+	end
+	if not items and os.globfiles then
+		local ok, result = pcall(os.globfiles, pattern, true)
+		if ok then
+			items = result
+		end
+	end
+	if type(items) ~= "table" then
+		return false
+	end
+	for _, item in ipairs(items) do
+		local name, ftype
+		if type(item) == "table" then
+			name, ftype = item.name, item.type
+		else
+			name = item
+		end
+		if name then
+			name = name:gsub("[/\\]+$", ""):match("([^/\\]+)$") or name
+			if name ~= "" and name ~= "." and name ~= ".." then
+				if not (ftype and not ftype:find("dir", 1, true)) then
+					local ok, isdir = pcall(function()
+						return os.isdir and os.isdir(path .. "\\" .. name)
+					end)
+					if ok and isdir then
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function token_is_dir(token)
+	local path = expand_path_token(token)
+	if not path then
 		return false
 	end
 	local ok, isdir = pcall(function()
@@ -184,6 +268,27 @@ end
 -- Nested `complete` + fzf --height can leave the input looking like only the
 -- last selected name (`windows`, then `clink`). Rebuild from the line as it
 -- was before that `complete`, replacing just the current word.
+--
+-- After `%DOTDIR%\` or `windows\`, matches are the last component only. Keep
+-- the typed directory prefix so accept becomes `%DOTDIR%\windows`, not `windows`.
+local function keep_typed_prefix(word, match_text)
+	if not match_text or match_text == "" then
+		return match_text
+	end
+	local dir_prefix = word and word:match("^(.*[/\\])[^/\\]*$")
+	if not dir_prefix or dir_prefix == "" then
+		return match_text
+	end
+	if match_text:sub(1, #dir_prefix) == dir_prefix then
+		return match_text
+	end
+	if match_text:match("^%a:[/\\]") or match_text:sub(1, 2) == "\\\\" then
+		return match_text
+	end
+	local name = match_text:gsub("[/\\]+$", ""):match("([^/\\]+)$") or match_text
+	return dir_prefix .. name
+end
+
 local function apply_selected_word(rl_buffer, snapshot, match_text)
 	if not match_text or match_text == "" or not snapshot then
 		return
@@ -204,26 +309,80 @@ local function apply_selected_word(rl_buffer, snapshot, match_text)
 	rl_buffer:endundogroup()
 end
 
--- After accept: directory → `\`; file → space (fzf-tab continuous-trigger).
-local function after_accept(rl_buffer)
+-- After accept: directory with subdirs → `\`; cd into a leaf dir or a file → space.
+local function after_accept(rl_buffer, is_dir)
 	local line = rl_buffer:getbuffer()
 	local cursor = rl_buffer:getcursor()
 	local before = line:sub(1, cursor - 1)
 	if before:match("[/\\]$") then
-		return
+		return true
 	end
 	local token = before:match('"([^"]*)"$') or before:match("([^%s]+)$") or ""
-	if token_is_dir(token) then
+	local as_dir = is_dir or token_is_dir(token)
+	if as_dir then
+		if dir_only_complete and not path_has_subdirs(token) then
+			if not before:match("%s$") then
+				rl_buffer:insert(" ")
+			end
+			return false
+		end
 		rl_buffer:insert("\\")
-		return
+		return true
 	end
 	if not before:match("%s$") then
 		rl_buffer:insert(" ")
 	end
+	return false
 end
 
 local function strip_cr(s)
 	return (s:gsub("\r$", ""))
+end
+
+local function match_is_dir(m)
+	if not m then
+		return false
+	end
+	if type(m.type) == "string" and m.type:find("dir", 1, true) then
+		return true
+	end
+	if type(m.match) == "string" and m.match:find("[/\\]$") then
+		return true
+	end
+	if type(m.display) == "string" and (m.display:find("/$") or m.display:find("\\$")) then
+		return true
+	end
+	return false
+end
+
+local function match_path_on_disk(m)
+	if not m or type(m.match) ~= "string" or m.match == "" then
+		return nil
+	end
+	local name = m.match:gsub("[/\\]+$", "")
+	if name:match("^%%[^%%]+%%") then
+		return expand_path_token(name) or expand_path_token(name .. "\\")
+	end
+	if name:match("^%a:[/\\]") or name:sub(1, 2) == "\\\\" then
+		return name
+	end
+	local prefix = os.getenv("CLINK_FZF_PATH_PREFIX")
+	local base = name:match("([^/\\]+)$") or name
+	if prefix and prefix ~= "" then
+		return prefix .. "\\" .. base
+	end
+	return expand_path_token(name) or name
+end
+
+local function match_exists_as_dir(m)
+	local path = match_path_on_disk(m)
+	if not path then
+		return false
+	end
+	local ok, isdir = pcall(function()
+		return os.isdir and os.isdir(path)
+	end)
+	return ok and isdir
 end
 
 local function match_label(m)
@@ -253,7 +412,33 @@ local function run_fzf(matches)
 	if not intercept then
 		return matches
 	end
+	-- Path children of `cd` are directories only. Env-var *names* (`%dot`,
+	-- `%DOTDIR%`) are not paths: `%DOTDIR%` fails `os.isdir`, so filtering
+	-- them out made `cd %<Tab>` / `cd %dot<Tab>` do nothing.
+	if dir_only_complete and not env_name_complete and type(matches) == "table" then
+		local dirs = {}
+		for _, m in ipairs(matches) do
+			if match_exists_as_dir(m) then
+				dirs[#dirs + 1] = m
+			end
+		end
+		matches = dirs
+		-- No subdirs: do not open fzf and do not let Clink insert files.
+		if #matches == 0 then
+			intercept = false
+			selected_match_text = nil
+			selected_match_is_dir = false
+			return {}
+		end
+	end
 	if type(matches) ~= "table" or #matches <= 1 then
+		-- Unique match: let Clink insert it. Never insert a leftover file for `cd`.
+		if dir_only_complete and not env_name_complete and #matches == 1 and not match_exists_as_dir(matches[1]) then
+			intercept = false
+			selected_match_text = nil
+			selected_match_is_dir = false
+			return {}
+		end
 		intercept = false
 		return matches
 	end
@@ -366,8 +551,10 @@ local function run_fzf(matches)
 	if #ret == 0 then
 		want_more = false
 		selected_match_text = nil
+		selected_match_is_dir = false
 	else
 		selected_match_text = ret[1].match
+		selected_match_is_dir = match_is_dir(ret[1])
 	end
 	return ret
 end
@@ -472,6 +659,8 @@ local function run_continuous_loop(rl_buffer)
 	while true do
 		local word, word_start, word_end, line = current_word_info(rl_buffer)
 		pending_query = query_from_word(word)
+		dir_only_complete = is_dir_only_command(line)
+		env_name_complete = word:match("^%%[^/\\]*$") ~= nil
 		local prefix = prefix_from_word(word)
 		if prefix ~= "" then
 			os.setenv("CLINK_FZF_PATH_PREFIX", prefix)
@@ -479,12 +668,23 @@ local function run_continuous_loop(rl_buffer)
 			os.setenv("CLINK_FZF_PATH_PREFIX", nil)
 		end
 
+		-- `cd dir\<Tab>` with no subdirs: do not complete files and do not open fzf.
+		if dir_only_complete and word:match("[/\\]$") then
+			if token_is_dir(word) and not path_has_subdirs(word) then
+				return
+			end
+		end
+
 		intercept = true
 		want_more = false
 		selected_match_text = nil
+		selected_match_is_dir = false
 		rl.invokecommand("complete")
 		if intercept then
-			rl_buffer:ding()
+			-- No matches (e.g. `cd` into a leaf dir): stay silent, like bash.
+			if not dir_only_complete then
+				rl_buffer:ding()
+			end
 			intercept = false
 			return
 		end
@@ -493,8 +693,11 @@ local function run_continuous_loop(rl_buffer)
 				line = line,
 				word_start = word_start,
 				word_end = word_end,
-			}, selected_match_text)
-			after_accept(rl_buffer)
+			}, keep_typed_prefix(word, selected_match_text))
+			local can_descend = after_accept(rl_buffer, selected_match_is_dir)
+			if not can_descend then
+				want_more = false
+			end
 		end
 		if not want_more then
 			return

@@ -2,6 +2,8 @@
 --   %dot<Tab>     → %DOTDIR%\          (name; directory values get \)
 --   %DOTDIR%<Tab> → C:\...\dotfiles    (expand the value; match.expand_envvars)
 --   %DOTDIR%\<Tab> stays %DOTDIR%\ and completes files relative to that dir
+--   `cd %DOTDIR%\<Tab>` completes directories only (Linux-style); a leaf dir
+--   with no subdirs yields no matches (no files, no fzf).
 --   Space after %DOTDIR%\ → %DOTDIR%
 -- Non-directory values (e.g. %ALL_PROXY%) stay unsuffixed.
 --
@@ -107,7 +109,13 @@ local function env_rel_from_line(line_state)
 	return before:match("%%([^%%]+)%%([/\\][^&|<>%s\"]*)$")
 end
 
-local function glob_entries(pattern)
+local function glob_entries(pattern, dirs_only)
+	if dirs_only and os.globdirs then
+		local ok, result = pcall(os.globdirs, pattern, true)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
 	if os.globfiles then
 		local ok, result = pcall(os.globfiles, pattern, true)
 		if ok and type(result) == "table" then
@@ -123,7 +131,7 @@ local function glob_entries(pattern)
 	return {}
 end
 
-local function add_env_path_matches(match_builder, name, rel)
+local function add_env_path_matches(match_builder, name, rel, dirs_only)
 	local root = env_dir_path(name)
 	if not root then
 		return
@@ -139,7 +147,7 @@ local function add_env_path_matches(match_builder, name, rel)
 		fs = fs .. "\\"
 	end
 
-	for _, item in ipairs(glob_entries(fs .. prefix .. "*")) do
+	for _, item in ipairs(glob_entries(fs .. prefix .. "*", dirs_only)) do
 		local fname, ftype
 		if type(item) == "table" then
 			fname, ftype = item.name, item.type
@@ -150,24 +158,26 @@ local function add_env_path_matches(match_builder, name, rel)
 			fname = fname:gsub("[/\\]+$", "")
 			fname = fname:match("([^/\\]+)$") or fname
 			if fname ~= "" and fname ~= "." and fname ~= ".." then
-				local is_dir = ftype and ftype:find("dir", 1, true)
-				if is_dir == nil then
-					local ok, d = pcall(function()
-						return os.isdir and os.isdir(fs .. fname)
-					end)
-					is_dir = ok and d
+				local is_dir = false
+				local ok, d = pcall(function()
+					return os.isdir and os.isdir(fs .. fname)
+				end)
+				if ok then
+					is_dir = d
 				end
-				-- Use `/` in fzf display: a trailing `\` makes `cmd` eat the
-				-- closing quote of `--preview "fzf-preview.cmd {}"`.
-				local display = fname
-				if is_dir then
-					display = fname .. "/"
+				if not (dirs_only and not is_dir) then
+					-- Use `/` in fzf display: a trailing `\` makes `cmd` eat the
+					-- closing quote of `--preview "fzf-preview.cmd {}"`.
+					local display = fname
+					if is_dir then
+						display = fname .. "/"
+					end
+					match_builder:addmatch({
+						match = fname,
+						type = ftype or (is_dir and "dir" or "file"),
+						display = display,
+					})
 				end
-				match_builder:addmatch({
-					match = fname,
-					type = ftype or (is_dir and "dir" or "file"),
-					display = display,
-				})
 			end
 		end
 	end
@@ -212,13 +222,35 @@ local function add_env_names(match_builder)
 	end
 end
 
+local function is_dir_command(line_state)
+	local line = ""
+	if line_state and line_state.getline then
+		line = line_state:getline() or ""
+		local cursor = line_state.getcursor and line_state:getcursor() or (#line + 1)
+		line = line:sub(1, cursor - 1)
+	end
+	local command = line:match("^%s*([^%s]+)") or ""
+	command = command:match("([^/\\]+)$") or command
+	if command == "" then
+		return false
+	end
+	local list = os.getenv("FZF_COMPLETION_DIR_COMMANDS") or "cd chdir rd rmdir pushd"
+	command = command:lower()
+	for c in list:gmatch("%S+") do
+		if command == c:lower() then
+			return true
+		end
+	end
+	return false
+end
+
 -- Priority 9 runs before Clink's built-in %VAR% generator (10).
 local env_gen = clink.generator(9)
 
 function env_gen:generate(line_state, match_builder)
 	local name, rel = env_rel_from_line(line_state)
 	if name and rel and is_dir_env(name) then
-		add_env_path_matches(match_builder, name, rel)
+		add_env_path_matches(match_builder, name, rel, is_dir_command(line_state))
 		return true
 	end
 
