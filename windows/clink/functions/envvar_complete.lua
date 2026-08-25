@@ -157,9 +157,11 @@ local function add_env_path_matches(match_builder, name, rel)
 					end)
 					is_dir = ok and d
 				end
+				-- Use `/` in fzf display: a trailing `\` makes `cmd` eat the
+				-- closing quote of `--preview "fzf-preview.cmd {}"`.
 				local display = fname
 				if is_dir then
-					display = fname .. "\\"
+					display = fname .. "/"
 				end
 				match_builder:addmatch({
 					match = fname,
@@ -199,8 +201,14 @@ local function add_env_names(match_builder)
 		local match = "%" .. name .. "%"
 		if is_dir_env(name) then
 			match = match .. "\\"
+			match_builder:addmatch({
+				match = match,
+				type = "word",
+				display = "%" .. name .. "%/",
+			})
+		else
+			match_builder:addmatch(match, "word")
 		end
-		match_builder:addmatch(match, "word")
 	end
 end
 

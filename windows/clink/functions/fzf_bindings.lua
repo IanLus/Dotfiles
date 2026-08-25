@@ -39,7 +39,12 @@ local function get_fzf_complete_command(extra)
 	end
 	command = join_str(command, "--reverse")
 	command = join_str(command, os.getenv("FZF_DEFAULT_OPTS"))
-	command = join_str(command, os.getenv("FZF_COMPLETION_OPTS") or os.getenv("FZF_COMPLETE_OPTS"))
+	local completion_opts = os.getenv("FZF_COMPLETION_OPTS") or os.getenv("FZF_COMPLETE_OPTS") or ""
+	-- Last --preview does not always win on Windows; drop the default when extra sets one.
+	if extra and extra:find("--preview", 1, true) then
+		completion_opts = completion_opts:gsub('%-%-preview%s+"[^"]*"', "")
+	end
+	command = join_str(command, completion_opts)
 	return join_str(command, extra)
 end
 
@@ -73,16 +78,63 @@ local function query_from_word(word)
 	return word:gsub("%^", "^^")
 end
 
+local function getenv_expanded(name)
+	if not name or name == "" then
+		return nil
+	end
+	local value
+	if name:lower() == "cd" then
+		value = os.getcwd and os.getcwd()
+	else
+		value = os.getenv(name)
+	end
+	if not value or value == "" then
+		return nil
+	end
+	if os.expand_env then
+		value = os.expand_env(value) or value
+	end
+	value = value:gsub("%%([^%%]+)%%", function(inner)
+		if inner:lower() == "cd" then
+			return os.getcwd and os.getcwd() or ("%cd%")
+		end
+		return os.getenv(inner) or ("%" .. inner .. "%")
+	end)
+	value = value:gsub('^"(.-)"$', "%1"):gsub("[/\\]+$", "")
+	if value == "" then
+		return nil
+	end
+	return value
+end
+
 -- Directory prefix of the current word (`windows\` → `windows`), with %VAR% expanded.
+-- `%DOTDIR%\` and `%DOTDIR%\windows\` must resolve to a real path: fzf matches are
+-- only the last component, and preview joins them onto CLINK_FZF_PATH_PREFIX.
 local function prefix_from_word(word)
+	local env_name, rest = word:match("^%%([^%%]+)%%([/\\].*)$")
+	if env_name then
+		local root = getenv_expanded(env_name)
+		if not root then
+			return ""
+		end
+		local parent = rest:match("^(.*)[/\\][^/\\]*$") or ""
+		parent = parent:gsub("/", "\\"):gsub("^[\\]+", ""):gsub("[\\]+$", "")
+		if parent == "" then
+			return root
+		end
+		return root .. "\\" .. parent
+	end
 	local dir = word:match("^(.*)[/\\][^/\\]*$")
 	if not dir or dir == "" then
 		return ""
 	end
+	dir = dir:gsub("%%([^%%]+)%%", function(name)
+		return getenv_expanded(name) or ("%" .. name .. "%")
+	end)
 	if os.expand_env then
 		dir = os.expand_env(dir) or dir
 	end
-	return dir
+	return dir:gsub("[/\\]+$", "")
 end
 
 -- Show file/dir matches as names relative to the typed directory, not pwd.
@@ -96,7 +148,8 @@ local function relativize_path_display(matches)
 			if name and name ~= "" then
 				local is_dir = (type(m.type) == "string" and m.type:find("dir", 1, true))
 					or m.match:find("[/\\]$")
-				m.display = is_dir and (name .. "\\") or name
+				-- `/` not `\`: trailing backslash breaks fzf preview quoting on cmd.
+				m.display = is_dir and (name .. "/") or name
 			end
 		end
 	end
@@ -180,6 +233,21 @@ local function match_label(m)
 	return m.match
 end
 
+-- `%DOTDIR%` in `{}` is expanded or eaten by `cmd /c` before fzf-preview sees it.
+local function env_name_from_match(m)
+	local s = (m and m.match) or ""
+	return s:match("^%%([^%%]+)%%[\\/]?$")
+end
+
+local function all_env_name_matches(matches)
+	for _, m in ipairs(matches) do
+		if not env_name_from_match(m) then
+			return false
+		end
+	end
+	return true
+end
+
 -- Own fzf so we can read --expect=/ (clink-fzf's filter_matches discards that line).
 local function run_fzf(matches)
 	if not intercept then
@@ -190,6 +258,7 @@ local function run_fzf(matches)
 		return matches
 	end
 
+	local env_preview = all_env_name_matches(matches)
 	local show_descriptions = settings.get("fzf.show_descriptions")
 	local strings = {}
 	local longest = 0
@@ -207,6 +276,10 @@ local function run_fzf(matches)
 	local extra = "--expect=/"
 	if pending_query ~= "" then
 		extra = extra .. ' --query "' .. pending_query:gsub('"', "") .. '"'
+	end
+	-- Hidden field 1 is the name (no `%`), so preview does not go through cmd `%VAR%` expansion.
+	if env_preview then
+		extra = extra .. ' --delimiter="\t" --with-nth=2.. --preview "fzf-preview.cmd --env {1}"'
 	end
 	local r, w = io.popenrw('"' .. get_fzf_complete_command(extra) .. '"')
 	if not r or not w then
@@ -228,6 +301,9 @@ local function run_fzf(matches)
 			end
 			text = text .. string.rep(" ", pad) .. desc
 		end
+		if env_preview then
+			text = env_name_from_match(m) .. "\t" .. text
+		end
 		local plain = console.plaintext and console.plaintext(text) or text
 		if not which[plain] then
 			which[plain] = m
@@ -236,6 +312,32 @@ local function run_fzf(matches)
 	end
 	w:close()
 
+	local function match_from_line(line)
+		line = strip_cr(line)
+		if which[line] then
+			return which[line]
+		end
+		if env_preview then
+			local name = line:match("^([^\t]+)")
+			if name then
+				for _, cand in ipairs(matches) do
+					if env_name_from_match(cand) == name then
+						return cand
+					end
+				end
+			end
+			local env_name = line:match("^%%([^%%]+)%%")
+			if env_name then
+				for _, cand in ipairs(matches) do
+					if env_name_from_match(cand) == env_name then
+						return cand
+					end
+				end
+			end
+		end
+		return nil
+	end
+
 	local ret = {}
 	local expect_line = r:read("*line")
 	if expect_line then
@@ -243,7 +345,7 @@ local function run_fzf(matches)
 		if expect_line == "/" then
 			want_more = true
 		elseif expect_line ~= "" then
-			local m = which[expect_line]
+			local m = match_from_line(expect_line)
 			if m then
 				ret[#ret + 1] = m
 			end
@@ -253,7 +355,7 @@ local function run_fzf(matches)
 			if not line then
 				break
 			end
-			local m = which[strip_cr(line)]
+			local m = match_from_line(line)
 			if m then
 				ret[#ret + 1] = m
 			end
