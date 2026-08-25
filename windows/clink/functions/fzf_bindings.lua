@@ -405,11 +405,66 @@ local function ends_with_globstar(line_state, rl_buffer)
 	return from_state:sub(-2) == "**" or word:sub(-2) == "**"
 end
 
+-- Directory that `**` should recurse from when the word is `%VAR%\...**`.
+-- envvar_complete's word break leaves only `**` (or `win**`) for clink-fzf, so
+-- its $dir is empty/unexpanded and dirx lists cwd instead of the env path.
+local function globstar_env_root(word)
+	if not word or word:sub(-2) ~= "**" then
+		return nil
+	end
+	local name, rest = word:match("^%%([^%%]+)%%([/\\].*)%*%*$")
+	if not name then
+		return nil
+	end
+	local root = getenv_expanded(name)
+	if not root then
+		return nil
+	end
+	local stem = rest:gsub("%*%*$", "")
+	local dirpart
+	if stem:match("[/\\]$") or stem:match("^[/\\]+$") then
+		dirpart = stem:gsub("[/\\]+$", "")
+	else
+		dirpart = (stem:match("^(.*)[/\\][^/\\]+$") or ""):gsub("[/\\]+$", "")
+	end
+	if dirpart == "" then
+		return root
+	end
+	return root .. dirpart:gsub("/", "\\")
+end
+
+local function restore_env(name, prev)
+	if prev == nil then
+		os.setenv(name, nil)
+	else
+		os.setenv(name, prev)
+	end
+end
+
 local function restore_path_prefix(prev)
 	if prev == nil or prev == "" then
 		os.setenv("CLINK_FZF_PATH_PREFIX", nil)
 	else
 		os.setenv("CLINK_FZF_PATH_PREFIX", prev)
+	end
+end
+
+-- Point clink-fzf's ** listing at the expanded env dir; keep %VAR%\ on the line
+-- because getwordbreakinfo makes insert replace only the `**` tail.
+local function fzf_globstar_env(rl_buffer, line_state, root)
+	local prev_t = os.getenv("FZF_CTRL_T_COMMAND")
+	local prev_c = os.getenv("FZF_ALT_C_COMMAND")
+	local prev_prefix = os.getenv("CLINK_FZF_PATH_PREFIX")
+	local quoted = '"' .. root:gsub('"', "") .. '"'
+	os.setenv("FZF_CTRL_T_COMMAND", "fzf-list-files.cmd " .. quoted)
+	os.setenv("FZF_ALT_C_COMMAND", "fzf-list-dirs.cmd " .. quoted)
+	os.setenv("CLINK_FZF_PATH_PREFIX", root)
+	local ok, err = pcall(fzf_complete_force, rl_buffer, line_state)
+	restore_env("FZF_CTRL_T_COMMAND", prev_t)
+	restore_env("FZF_ALT_C_COMMAND", prev_c)
+	restore_path_prefix(prev_prefix)
+	if not ok then
+		error(err)
 	end
 end
 
@@ -456,7 +511,13 @@ function fzf_complete_with_query(rl_buffer, line_state)
 	-- `**` recursive listing lives in clink-fzf. Call the function directly:
 	-- `rl.invokecommand("luafunc:...")` from inside a luafunc does not run it.
 	if fzf_complete_force and ends_with_globstar(line_state, rl_buffer) then
-		fzf_complete_force(rl_buffer, line_state)
+		local word = current_word_info(rl_buffer)
+		local env_root = globstar_env_root(word)
+		if env_root then
+			fzf_globstar_env(rl_buffer, line_state, env_root)
+		else
+			fzf_complete_force(rl_buffer, line_state)
+		end
 		return
 	end
 
