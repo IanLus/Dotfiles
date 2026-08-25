@@ -80,7 +80,7 @@ goto :preview_command
 
 :preview_dir
 rem Same flags as less/lessfilter.sh, but invoked from cmd (no Git bash).
-eza --git -ahl --color=always --icons=always -- "!__FILE!"
+eza -ahl --color=always --icons=always -- "!__FILE!"
 goto :end
 
 :preview_file
