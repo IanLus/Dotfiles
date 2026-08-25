@@ -11,23 +11,138 @@ $script:SoftwareRoot = if ($env:SOFTWARE_HOME) { $env:SOFTWARE_HOME } else { 'C:
 $script:ClinkSoftwareRoot = if ($env:CLINK_SOFTWARE_HOME) { $env:CLINK_SOFTWARE_HOME } else { Join-Path $script:SoftwareRoot 'clink-plugins' }
 $script:InstallProxy = if ($NoProxy) { $null } else { $Proxy }
 
+# [Environment]::SetEnvironmentVariable writes REG_SZ. Values with %VAR% must be
+# REG_EXPAND_SZ or Windows leaves them literal (e.g. CLINK_PROFILE=%DOTDIR%\...).
+function Send-EnvironmentChange {
+    if (-not ('Win32.EnvNotify' -as [type])) {
+        Add-Type -Namespace Win32 -Name EnvNotify -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+public static extern IntPtr SendMessageTimeout(
+    IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam,
+    uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+    }
+    $result = [UIntPtr]::Zero
+    [void][Win32.EnvNotify]::SendMessageTimeout(
+        [IntPtr]0xffff,
+        [uint32]0x001A,
+        [UIntPtr]::Zero,
+        'Environment',
+        [uint32]0x0002,
+        [uint32]5000,
+        [ref]$result)
+}
+
+function Open-UserEnvKey {
+    param([switch]$Writable)
+    if ($Writable) {
+        return [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Environment')
+    }
+    return [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $false)
+}
+
+function Get-UserEnvRaw {
+    param([string]$Name)
+    $key = Open-UserEnvKey
+    if (-not $key) { return $null }
+    try {
+        return $key.GetValue($Name, $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    } finally {
+        $key.Dispose()
+    }
+}
+
+function Get-UserEnvKind {
+    param([string]$Name)
+    $key = Open-UserEnvKey
+    if (-not $key) { return $null }
+    try {
+        foreach ($n in $key.GetValueNames()) {
+            if ($n -ieq $Name) {
+                return $key.GetValueKind($n)
+            }
+        }
+        return $null
+    } finally {
+        $key.Dispose()
+    }
+}
+
+function Get-UserEnvWriteKind {
+    param(
+        [string]$Name,
+        [string]$Value
+    )
+    if ($Name -ieq 'Path' -or $Value -match '%[^%]+%') {
+        return [Microsoft.Win32.RegistryValueKind]::ExpandString
+    }
+    return [Microsoft.Win32.RegistryValueKind]::String
+}
+
+function Write-UserEnvVar {
+    param(
+        [string]$Name,
+        [string]$Value,
+        [Microsoft.Win32.RegistryValueKind]$Kind
+    )
+    $key = Open-UserEnvKey -Writable
+    try {
+        $key.SetValue($Name, $Value, $Kind)
+    } finally {
+        $key.Dispose()
+    }
+    Send-EnvironmentChange
+    if ($Name -ine 'Path') {
+        Set-Item -Path "Env:$Name" -Value ([Environment]::ExpandEnvironmentVariables($Value))
+    }
+}
+
+function Repair-UserEnvExpandKind {
+    param([string]$Name)
+    $raw = Get-UserEnvRaw -Name $Name
+    if ($null -eq $raw) { return $false }
+    $text = [string]$raw
+    if ($text -notmatch '%[^%]+%') { return $false }
+    $kind = Get-UserEnvKind -Name $Name
+    if ($kind -eq [Microsoft.Win32.RegistryValueKind]::ExpandString) { return $false }
+    Write-UserEnvVar -Name $Name -Value $text -Kind ExpandString
+    Write-Host "Repaired $Name : REG_SZ -> REG_EXPAND_SZ ($text)" -ForegroundColor Yellow
+    return $true
+}
+
+function Split-UserPathEntries {
+    param([string]$PathValue)
+    if ([string]::IsNullOrWhiteSpace($PathValue)) { return @() }
+    return @($PathValue -split ';' | Where-Object { $_ -and $_.Trim() -ne '' })
+}
+
+function Test-PathEntryEquals {
+    param(
+        [string]$Entry,
+        [string]$Dir
+    )
+    $want = $Dir.TrimEnd('\')
+    if ($Entry.TrimEnd('\') -ieq $want) { return $true }
+    $expanded = [Environment]::ExpandEnvironmentVariables($Entry).TrimEnd('\')
+    return $expanded -ieq $want
+}
+
 function Add-UserPathEntry {
     param([string]$Dir)
     if (-not (Test-Path -LiteralPath $Dir)) {
         New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     }
     $Dir = (Resolve-Path -LiteralPath $Dir).Path
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $userPath = [string](Get-UserEnvRaw -Name 'Path')
     if (-not $userPath) { $userPath = '' }
-    $parts = $userPath -split ';' | Where-Object { $_ -and $_.Trim() -ne '' }
-    foreach ($part in $parts) {
-        if ($part.TrimEnd('\') -ieq $Dir.TrimEnd('\')) {
+    foreach ($part in (Split-UserPathEntries $userPath)) {
+        if (Test-PathEntryEquals -Entry $part -Dir $Dir) {
             Write-Host "PATH already contains $Dir"
             return
         }
     }
     $newPath = if ($userPath.Trim()) { "$Dir;$userPath" } else { $Dir }
-    [Environment]::SetEnvironmentVariable('Path', $newPath, 'User')
+    Write-UserEnvVar -Name 'Path' -Value $newPath -Kind ExpandString
     if ($env:Path -notlike "*$Dir*") {
         $env:Path = "$Dir;$env:Path"
     }
@@ -37,21 +152,20 @@ function Add-UserPathEntry {
 function Remove-UserPathEntry {
     param([string]$Dir)
     if ([string]::IsNullOrWhiteSpace($Dir)) { return }
-    $want = $Dir.TrimEnd('\')
-    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $userPath = [string](Get-UserEnvRaw -Name 'Path')
     if (-not $userPath) { return }
     $kept = [System.Collections.Generic.List[string]]::new()
     $removed = $false
-    foreach ($part in ($userPath -split ';')) {
-        if (-not $part -or $part.Trim() -eq '') { continue }
-        if ($part.TrimEnd('\') -ieq $want) {
+    foreach ($part in (Split-UserPathEntries $userPath)) {
+        if (Test-PathEntryEquals -Entry $part -Dir $Dir) {
             $removed = $true
             continue
         }
         $kept.Add($part)
     }
     if (-not $removed) { return }
-    [Environment]::SetEnvironmentVariable('Path', ($kept -join ';'), 'User')
+    Write-UserEnvVar -Name 'Path' -Value ($kept -join ';') -Kind ExpandString
+    $want = $Dir.TrimEnd('\')
     $env:Path = (
         ($env:Path -split ';') |
         Where-Object { $_ -and $_.TrimEnd('\') -ine $want }
@@ -152,16 +266,37 @@ function Set-UserEnvVar {
         [string]$Value,
         [switch]$Overwrite
     )
-    $existing = Get-PersistentEnv -Name $Name
+    $existingRaw = Get-UserEnvRaw -Name $Name
+    $existing = if ($null -ne $existingRaw -and [string]$existingRaw -ne '') {
+        [string]$existingRaw
+    } else {
+        Get-PersistentEnv -Name $Name
+    }
     if (-not $Overwrite -and -not [string]::IsNullOrWhiteSpace($existing)) {
+        Repair-UserEnvExpandKind -Name $Name | Out-Null
         Write-Host "Keep $Name = $existing"
         return $existing
     }
-    $expanded = [Environment]::ExpandEnvironmentVariables($Value)
-    [Environment]::SetEnvironmentVariable($Name, $expanded, 'User')
-    Set-Item -Path "Env:$Name" -Value $expanded
-    Write-InstallSet -Name $Name -Value $expanded
-    return $expanded
+    $kind = Get-UserEnvWriteKind -Name $Name -Value $Value
+    Write-UserEnvVar -Name $Name -Value $Value -Kind $kind
+    $shown = [Environment]::ExpandEnvironmentVariables($Value)
+    Write-InstallSet -Name $Name -Value $(if ($Value -eq $shown) { $Value } else { "$Value -> $shown" })
+    return $Value
+}
+
+function Get-ClinkProfileStoredValue {
+    $machineDot = [Environment]::GetEnvironmentVariable('DOTDIR', 'Machine')
+    if ([string]::IsNullOrWhiteSpace($machineDot)) {
+        return $script:ClinkProfileDir
+    }
+    $root = [Environment]::ExpandEnvironmentVariables($machineDot).TrimEnd('\')
+    $prof = $script:ClinkProfileDir.TrimEnd('\')
+    if ($prof.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+        $tail = $prof.Substring($root.Length).TrimStart('\')
+        if ($tail) { return "%DOTDIR%\$tail" }
+        return '%DOTDIR%'
+    }
+    return $script:ClinkProfileDir
 }
 
 function Ensure-DotDirAndClinkProfile {
@@ -169,12 +304,18 @@ function Ensure-DotDirAndClinkProfile {
     if (-not (Get-PersistentEnv -Name 'DOTDIR')) {
         Set-UserEnvVar -Name 'DOTDIR' -Value $dotDir | Out-Null
     }
-    # User-level %DOTDIR% is not visible when Windows expands another user var.
-    $profile = Get-PersistentEnv -Name 'CLINK_PROFILE'
+    Repair-UserEnvExpandKind -Name 'CLINK_PROFILE' | Out-Null
+
+    # User-level %DOTDIR% is not visible when Windows expands another user var,
+    # even as REG_EXPAND_SZ. Only a *system* DOTDIR can back CLINK_PROFILE=%DOTDIR%\...
+    $profile = [string](Get-UserEnvRaw -Name 'CLINK_PROFILE')
+    if ([string]::IsNullOrWhiteSpace($profile)) {
+        $profile = Get-PersistentEnv -Name 'CLINK_PROFILE'
+    }
     $machineDot = [Environment]::GetEnvironmentVariable('DOTDIR', 'Machine')
     $nestedUserDot = $profile -match '%DOTDIR%' -and [string]::IsNullOrWhiteSpace($machineDot)
     if ([string]::IsNullOrWhiteSpace($profile) -or $nestedUserDot) {
-        Set-UserEnvVar -Name 'CLINK_PROFILE' -Value $script:ClinkProfileDir -Overwrite | Out-Null
+        Set-UserEnvVar -Name 'CLINK_PROFILE' -Value (Get-ClinkProfileStoredValue) -Overwrite | Out-Null
     }
     Use-ClinkProfileEnv
 }

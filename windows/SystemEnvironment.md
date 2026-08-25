@@ -84,6 +84,8 @@ JAVA8=C:\Program Files\Java\jdk1.8.0_202
 CLINK_PROFILE=%DOTDIR%\windows\clink
 ```
 
+该项必须是 **REG_EXPAND_SZ**（系统设置界面里含 `%` 的值一般会是这种）。`setx` 和 `[Environment]::SetEnvironmentVariable` 会写成 **REG_SZ**，进程里就会看到字面量 `%DOTDIR%\windows\clink` 而不会展开。安装脚本按 REG_EXPAND_SZ 写入；若发现已有 `%…%` 却是 REG_SZ 会改过来。
+
 只在 `DOTDIR` 为系统变量时这样写。若 `DOTDIR` 只在用户级，写成绝对路径（安装脚本也按这个规则写）。
 
 将 `%CLINK_PROFILE%` 加入用户 `PATH`，以便全局调用 `z.cmd`（doskey 别名 `zb`/`zf` 等依赖此项）。
