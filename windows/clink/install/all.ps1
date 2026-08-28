@@ -71,7 +71,7 @@ foreach ($step in $steps) {
     }
 }
 
-Add-UserPathEntry -Dir $ClinkProfileDir
+Add-UserPathEntry -Dir $ClinkProfileDir -Entry '%CLINK_PROFILE%'
 
 Write-Host ""
 Write-Host 'All install scripts finished. Restart the terminal so CLINK_PROFILE, PATH, and Clink pick up the new setup.'

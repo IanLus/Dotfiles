@@ -128,25 +128,50 @@ function Test-PathEntryEquals {
 }
 
 function Add-UserPathEntry {
-    param([string]$Dir)
+    param(
+        [Parameter(Mandatory = $true)][string]$Dir,
+        # Stored PATH token. Use '%CLINK_PROFILE%' so PATH holds the variable, not a baked path.
+        [string]$Entry
+    )
     if (-not (Test-Path -LiteralPath $Dir)) {
         New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     }
     $Dir = (Resolve-Path -LiteralPath $Dir).Path
+    $stored = if ($Entry) { $Entry } else { $Dir }
     $userPath = [string](Get-UserEnvRaw -Name 'Path')
     if (-not $userPath) { $userPath = '' }
+
+    $kept = [System.Collections.Generic.List[string]]::new()
+    $have = $false
     foreach ($part in (Split-UserPathEntries $userPath)) {
-        if (Test-PathEntryEquals -Entry $part -Dir $Dir) {
-            Write-Host "PATH already contains $Dir"
+        $same = (Test-PathEntryEquals -Entry $part -Dir $Dir) -or
+            ($part.TrimEnd('\') -ieq $stored.TrimEnd('\'))
+        if ($same) {
+            if (-not $have) {
+                $kept.Add($stored)
+                $have = $true
+            }
+            continue
+        }
+        $kept.Add($part)
+    }
+
+    if ($have) {
+        $newPath = $kept -join ';'
+        if ($newPath -eq ($userPath -replace ';+$', '')) {
+            Write-Host "PATH already contains $stored"
             return
         }
+        Write-UserEnvVar -Name 'Path' -Value $newPath -Kind ExpandString
+        Write-Host "PATH: $Dir -> $stored" -ForegroundColor Green
+    } else {
+        $newPath = if ($userPath.Trim()) { "$stored;$userPath" } else { $stored }
+        Write-UserEnvVar -Name 'Path' -Value $newPath -Kind ExpandString
+        Write-Host "Added to user PATH: $stored" -ForegroundColor Green
     }
-    $newPath = if ($userPath.Trim()) { "$Dir;$userPath" } else { $Dir }
-    Write-UserEnvVar -Name 'Path' -Value $newPath -Kind ExpandString
     if ($env:Path -notlike "*$Dir*") {
         $env:Path = "$Dir;$env:Path"
     }
-    Write-Host "Added to user PATH: $Dir" -ForegroundColor Green
 }
 
 function Remove-UserPathEntry {
@@ -284,38 +309,21 @@ function Set-UserEnvVar {
     return $Value
 }
 
-function Get-ClinkProfileStoredValue {
-    $machineDot = [Environment]::GetEnvironmentVariable('DOTDIR', 'Machine')
-    if ([string]::IsNullOrWhiteSpace($machineDot)) {
-        return $script:ClinkProfileDir
-    }
-    $root = [Environment]::ExpandEnvironmentVariables($machineDot).TrimEnd('\')
-    $prof = $script:ClinkProfileDir.TrimEnd('\')
-    if ($prof.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
-        $tail = $prof.Substring($root.Length).TrimStart('\')
-        if ($tail) { return "%DOTDIR%\$tail" }
-        return '%DOTDIR%'
-    }
-    return $script:ClinkProfileDir
-}
-
 function Ensure-DotDirAndClinkProfile {
+    # User REG_SZ is loaded before user REG_EXPAND_SZ, so a literal DOTDIR can
+    # back CLINK_PROFILE=%DOTDIR%\windows\clink at logon.
     $dotDir = Split-Path -Parent (Split-Path -Parent $script:ClinkProfileDir)
     if (-not (Get-PersistentEnv -Name 'DOTDIR')) {
         Set-UserEnvVar -Name 'DOTDIR' -Value $dotDir | Out-Null
     }
     Repair-UserEnvExpandKind -Name 'CLINK_PROFILE' | Out-Null
 
-    # User-level %DOTDIR% is not visible when Windows expands another user var,
-    # even as REG_EXPAND_SZ. Only a *system* DOTDIR can back CLINK_PROFILE=%DOTDIR%\...
     $profile = [string](Get-UserEnvRaw -Name 'CLINK_PROFILE')
     if ([string]::IsNullOrWhiteSpace($profile)) {
         $profile = Get-PersistentEnv -Name 'CLINK_PROFILE'
     }
-    $machineDot = [Environment]::GetEnvironmentVariable('DOTDIR', 'Machine')
-    $nestedUserDot = $profile -match '%DOTDIR%' -and [string]::IsNullOrWhiteSpace($machineDot)
-    if ([string]::IsNullOrWhiteSpace($profile) -or $nestedUserDot) {
-        Set-UserEnvVar -Name 'CLINK_PROFILE' -Value (Get-ClinkProfileStoredValue) -Overwrite | Out-Null
+    if ([string]::IsNullOrWhiteSpace($profile)) {
+        Set-UserEnvVar -Name 'CLINK_PROFILE' -Value '%DOTDIR%\windows\clink' | Out-Null
     }
     Use-ClinkProfileEnv
 }

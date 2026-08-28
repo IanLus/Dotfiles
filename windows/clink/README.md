@@ -32,7 +32,7 @@ pwsh -File "$HOME\Documents\dotfiles\windows\clink\install\all.ps1"
 pwsh -File "$env:DOTDIR\windows\clink\install\all.ps1"
 ```
 
-未设置时会补上 `DOTDIR` 和 `CLINK_PROFILE`。`DOTDIR` 已是系统变量时，`CLINK_PROFILE` 写成 `%DOTDIR%\windows\clink`（REG_EXPAND_SZ）；若只在用户级，展开时看不到 `DOTDIR`，则写成绝对路径。含 `%` 却被存成 REG_SZ 的值会改成 REG_EXPAND_SZ。装完把 profile 加入用户 PATH（已有则跳过）。**新开一个终端**后再用。
+未设置时会补上用户级 `DOTDIR`（绝对路径，`REG_SZ`）和 `CLINK_PROFILE=%DOTDIR%\windows\clink`（`REG_EXPAND_SZ`）。用户 `REG_SZ` 先于 `REG_EXPAND_SZ` 加载，所以登录时 `%DOTDIR%` 会展开。含 `%` 却被存成 `REG_SZ` 的值会改成 `REG_EXPAND_SZ`。`all.ps1` 把 **`%CLINK_PROFILE%`** 加入用户 PATH（已有则跳过）。环境变量增改详见 [SystemEnvironment.md](../SystemEnvironment.md)「自动添加部分」。**新开一个终端**后再用。
 
 代理：已有 `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` 则直接用；否则询问，回车默认 `http://127.0.0.1:7890`。`-NoProxy` 关闭；`-Proxy` 指定。`-Minimal` 只链 `fzf.lua`。
 
@@ -54,7 +54,7 @@ winget 包（以及 dirx 的 GitHub release）查最新版，过期则询问是�
 | `dirx.ps1` | GitHub release | `%SOFTWARE_HOME%\dirx` |
 | `tools.ps1` | 本仓库 `.c` 用 gcc 编 | `tools\*.exe`（没有 gcc 则跳过，其余步骤继续） |
 
-其它可选变量：`GIT`、`CC`。
+其它可选**系统**变量：`GIT`（Git for Windows 根目录）、`CC`。`EDITOR`、`MINIFORGE` 也是系统变量，见 [SystemEnvironment.md](../SystemEnvironment.md)。
 
 ## 脚本不装
 
