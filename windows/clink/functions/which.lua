@@ -1,5 +1,6 @@
 -- Shared `which` for Clink and fzf preview.
 -- Clink: onfilterinput command (os.getalias / clink_lua_commands).
+-- Tab completes Lua commands, doskey aliases, CMD builtins, and PATH stems.
 -- Preview: lua.exe functions/which.lua <name> (reads aliases.lua + register_clink_lua_command).
 -- Resolution order is the same in both backends.
 
@@ -85,6 +86,166 @@ local cmd_builtins = {
 
 local function is_cmd_builtin(name)
 	return cmd_builtins[name:lower()] == true
+end
+
+-- PATH executables are cached until PATH itself changes. Clearing on every
+-- prompt would re-scan System32 on the first Tab of each line.
+local path_cmd_cache = nil
+local path_cmd_cache_key = nil
+
+local function pathext_set()
+	local set = {}
+	local pathext = os.getenv("PATHEXT") or ".COM;.EXE;.BAT;.CMD"
+	for ext in pathext:gmatch("[^;]+") do
+		if ext ~= "" then
+			if ext:sub(1, 1) ~= "." then
+				ext = "." .. ext
+			end
+			set[ext:lower()] = true
+		end
+	end
+	return set
+end
+
+local function command_stem(fname, exts)
+	fname = fname:gsub("[/\\]+$", ""):match("([^/\\]+)$") or fname
+	if fname == "" or fname == "." or fname == ".." then
+		return nil
+	end
+	local ext = fname:match("(%.[^%.]+)$")
+	if ext and exts[ext:lower()] then
+		return fname:sub(1, #fname - #ext)
+	end
+	return nil
+end
+
+local function path_dirs()
+	local dirs = {}
+	local seen = {}
+	local function add(dir)
+		if not dir or dir == "" then
+			return
+		end
+		dir = dir:gsub("[/\\]+$", "")
+		if dir == "" then
+			return
+		end
+		local key = dir:lower()
+		if seen[key] then
+			return
+		end
+		seen[key] = true
+		dirs[#dirs + 1] = dir
+	end
+	if os.getcwd then
+		add(os.getcwd())
+	end
+	for dir in (os.getenv("PATH") or ""):gmatch("[^;]+") do
+		add(dir)
+	end
+	return dirs
+end
+
+local function glob_pattern(dir, glob)
+	if path and path.join then
+		return path.join(dir, glob)
+	end
+	return dir .. "\\" .. glob
+end
+
+local function glob_dir_stems(dir, glob, exts, seen, names)
+	if not os.globfiles then
+		return
+	end
+	local ok, files = pcall(os.globfiles, glob_pattern(dir, glob), true)
+	if not ok or type(files) ~= "table" then
+		return
+	end
+	for _, item in ipairs(files) do
+		local fname, ftype
+		if type(item) == "table" then
+			fname, ftype = item.name, item.type
+		else
+			fname = item
+		end
+		if type(fname) == "string" and not (type(ftype) == "string" and ftype:find("dir")) then
+			local stem = command_stem(fname, exts)
+			if stem and not seen[stem:lower()] then
+				seen[stem:lower()] = true
+				names[#names + 1] = stem
+			end
+		end
+	end
+end
+
+local function list_path_commands(prefix)
+	prefix = prefix or ""
+	-- Strip glob metacharacters so a typed `*` cannot scan unrelated names.
+	prefix = prefix:gsub("[%[%]*?]", "")
+	local path_key = os.getenv("PATH") or ""
+	if path_cmd_cache and path_cmd_cache_key == path_key then
+		return path_cmd_cache
+	end
+
+	local seen = {}
+	local names = {}
+	local exts = pathext_set()
+	local glob = prefix == "" and "*" or (prefix .. "*")
+	for _, dir in ipairs(path_dirs()) do
+		glob_dir_stems(dir, glob, exts, seen, names)
+	end
+	if prefix == "" then
+		path_cmd_cache = names
+		path_cmd_cache_key = path_key
+	end
+	return names
+end
+
+local function add_which_match(builder, seen, name, typ, desc)
+	if type(name) ~= "string" or name == "" then
+		return
+	end
+	name = name:match("^([^=]+)") or name
+	name = name:gsub("%s+$", "")
+	if name == "" then
+		return
+	end
+	local key = name:lower()
+	if seen[key] then
+		return
+	end
+	seen[key] = true
+	local entry = { match = name, type = typ }
+	if desc then
+		entry.description = desc
+	end
+	builder:addmatch(entry)
+end
+
+local function add_which_matches(match_builder, word)
+	local seen = {}
+	if clink_lua_commands then
+		for _, name in pairs(clink_lua_commands) do
+			add_which_match(match_builder, seen, name, "cmd", "Lua")
+		end
+	end
+	if os.getaliases then
+		local ok, aliases = pcall(os.getaliases)
+		if ok and type(aliases) == "table" then
+			for _, name in ipairs(aliases) do
+				add_which_match(match_builder, seen, name, "alias", "alias")
+			end
+		end
+	end
+	for name in pairs(cmd_builtins) do
+		add_which_match(match_builder, seen, name, "cmd", "builtin")
+	end
+	for _, name in ipairs(list_path_commands(word)) do
+		add_which_match(match_builder, seen, name, "cmd")
+	end
+	if match_builder.setvolatile then
+		match_builder:setvolatile()
+	end
 end
 
 local function where_paths(name)
@@ -347,6 +508,57 @@ elseif clink.onfilterinput then
 	end)
 	if register_clink_lua_command then
 		register_clink_lua_command("which")
+	end
+	-- which is also a doskey alias (`rem $*`). Clink expands aliases when
+	-- looking up argmatchers; if `rem` has none, it falls back to this one.
+	if clink.argmatcher then
+		clink.argmatcher("which")
+			:addarg({
+				function(word, _, _, match_builder)
+					add_which_matches(match_builder, word)
+					return true
+				end,
+			})
+			:nofiles()
+	end
+	-- Fallback if Clink applies the expanded `rem $*` matcher instead of
+	-- `which`. Match generation is keyed off the typed command word.
+	if clink.generator then
+		local function which_arg_prefix(line_state)
+			if not line_state or not line_state.getline then
+				return nil
+			end
+			local line = line_state:getline() or ""
+			local cursor = line_state.getcursor and line_state:getcursor() or (#line + 1)
+			local before = line:sub(1, cursor - 1)
+			local arg = before:match("^%s*[Ww][Hh][Ii][Cc][Hh]%s+(.*)$")
+			if arg == nil or arg:find("[^%s]+%s+") then
+				return nil
+			end
+			return (arg:gsub('^"+', ""):gsub('"+$', ""))
+		end
+
+		local gen = clink.generator(20)
+		function gen:generate(line_state, match_builder)
+			local word = which_arg_prefix(line_state)
+			if word == nil then
+				return false
+			end
+			add_which_matches(match_builder, word)
+			if clink.onfiltermatches then
+				clink.onfiltermatches(function(matches)
+					local out = {}
+					for _, m in ipairs(matches) do
+						local typ = tostring(m.type or "")
+						if not typ:find("file") and not typ:find("dir") then
+							out[#out + 1] = m
+						end
+					end
+					return out
+				end)
+			end
+			return true
+		end
 	end
 else
 	print("which.lua requires a newer version of Clink; please upgrade.")
