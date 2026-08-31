@@ -137,9 +137,9 @@ local function path_dirs()
 		seen[key] = true
 		dirs[#dirs + 1] = dir
 	end
-	if os.getcwd then
-		add(os.getcwd())
-	end
+	-- "." not os.getcwd(): an absolute glob can make later file matches
+	-- (Ctrl+T / ** via dirx $dir) fully-qualified instead of cwd-relative.
+	add(".")
 	for dir in (os.getenv("PATH") or ""):gmatch("[^;]+") do
 		add(dir)
 	end
@@ -182,7 +182,7 @@ local function list_path_commands(prefix)
 	prefix = prefix or ""
 	-- Strip glob metacharacters so a typed `*` cannot scan unrelated names.
 	prefix = prefix:gsub("[%[%]*?]", "")
-	local path_key = os.getenv("PATH") or ""
+	local path_key = (os.getenv("PATH") or "") .. "\0" .. (os.getcwd and os.getcwd() or "")
 	if path_cmd_cache and path_cmd_cache_key == path_key then
 		return path_cmd_cache
 	end
@@ -511,10 +511,18 @@ elseif clink.onfilterinput then
 	end
 	-- which is also a doskey alias (`rem $*`). Clink expands aliases when
 	-- looking up argmatchers; if `rem` has none, it falls back to this one.
+	-- Paths and `**` belong to file / fzf listing, not command-name matches.
+	local function is_path_or_globstar(word)
+		return type(word) == "string" and (word:find("[/\\]") ~= nil or word:find("[*%[]") ~= nil)
+	end
+
 	if clink.argmatcher then
 		clink.argmatcher("which")
 			:addarg({
 				function(word, _, _, match_builder)
+					if is_path_or_globstar(word) then
+						return false
+					end
 					add_which_matches(match_builder, word)
 					return true
 				end,
@@ -541,22 +549,10 @@ elseif clink.onfilterinput then
 		local gen = clink.generator(20)
 		function gen:generate(line_state, match_builder)
 			local word = which_arg_prefix(line_state)
-			if word == nil then
+			if word == nil or is_path_or_globstar(word) then
 				return false
 			end
 			add_which_matches(match_builder, word)
-			if clink.onfiltermatches then
-				clink.onfiltermatches(function(matches)
-					local out = {}
-					for _, m in ipairs(matches) do
-						local typ = tostring(m.type or "")
-						if not typ:find("file") and not typ:find("dir") then
-							out[#out + 1] = m
-						end
-					end
-					return out
-				end)
-			end
 			return true
 		end
 	end

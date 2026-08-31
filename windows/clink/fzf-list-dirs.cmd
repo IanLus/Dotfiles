@@ -16,9 +16,14 @@ if "!ROOT:~-1!"=="/" (
 	goto strip
 )
 
+if "!ROOT!"=="." goto cwd
 if "!ROOT:~1,1!"==":" goto abs
 if /i "!ROOT:~0,2!."=="\\." goto abs
 dirx.exe /b /s /X:d /a:d-s-h --bare-relative --utf8 "!ROOT!"
+goto :eof
+
+:cwd
+dirx.exe /b /s /X:d /a:d-s-h --bare-relative --utf8
 goto :eof
 
 :abs

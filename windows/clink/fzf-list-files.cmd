@@ -18,11 +18,18 @@ if "!ROOT:~-1!"=="/" (
 )
 
 rem Relative ROOT (`windows`) is listed from cwd so fzf inserts `windows\foo`.
+rem `.` must not be passed to dirx: `dirx .` prints `.\foo`. Same as
+rem `%DOTDIR%\**` (cd then dirx with no path): `windows\foo`.
 rem Absolute ROOT (`%DOTDIR%` expanded) must be cwd, or dirx prints full paths
 rem and `**<Tab>` after `%DOTDIR%\` would insert `C:\...\file`.
+if "!ROOT!"=="." goto cwd
 if "!ROOT:~1,1!"==":" goto abs
 if /i "!ROOT:~0,2!."=="\\." goto abs
 dirx.exe /b /s /X:d /a:-s-h --bare-relative --utf8 "!ROOT!"
+goto :eof
+
+:cwd
+dirx.exe /b /s /X:d /a:-s-h --bare-relative --utf8
 goto :eof
 
 :abs
