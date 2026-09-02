@@ -3,6 +3,8 @@
 -- rm [opts]    : bash-like remove files / directories (-r -f -d -v)
 -- which lives in functions/which.lua (shared with fzf preview).
 
+local glob_flags = { hidden = true, system = true }
+
 local function trim(s)
 	return (s:gsub("^%s+", ""):gsub("%s+$", ""))
 end
@@ -20,7 +22,171 @@ local function first_arg(rest)
 end
 
 local function quote_cmd(s)
-	return '"' .. tostring(s):gsub('"', "") .. '"'
+	s = tostring(s):gsub('"', "")
+	-- Trailing `\` would eat the closing quote (`rmdir "C:\dir\"`).
+	if s:sub(-1) == "\\" then
+		s = s .. "\\"
+	end
+	return '"' .. s .. '"'
+end
+
+-- `cmd /c` is not a batch file: `%%VAR%%` still expands `%VAR%`.
+local function quote_cmd_exec(s)
+	return quote_cmd(tostring(s):gsub("%%", "^%%"))
+end
+
+local function env_var_value(name)
+	if not name or name == "" then
+		return nil
+	end
+	if name:lower() == "cd" then
+		return os.getcwd and os.getcwd() or nil
+	end
+	local v = os.getenv(name)
+	if v and v ~= "" then
+		return v
+	end
+	return nil
+end
+
+local function expand_env(path)
+	if os.expand_env then
+		path = os.expand_env(path) or path
+	end
+	return (path:gsub("%%([^%%]+)%%", function(name)
+		return env_var_value(name) or ("%" .. name .. "%")
+	end))
+end
+
+local function home_dir()
+	if rl.expandtilde then
+		local home = rl.expandtilde("~")
+		if home and home ~= "" and home ~= "~" then
+			return home:gsub("[/\\]+$", "")
+		end
+	end
+	local home = os.getenv("HOME") or os.getenv("USERPROFILE")
+	if home and home ~= "" then
+		return home:gsub("[/\\]+$", "")
+	end
+	return nil
+end
+
+local function norm_path(p)
+	return (p or ""):gsub("/", "\\"):gsub("\\+$", ""):lower()
+end
+
+local function is_abs_win(p)
+	return p:match("^%a:[/\\]") ~= nil or p:match("^%a:$") ~= nil or p:sub(1, 2) == "\\\\"
+end
+
+local function is_rel_prefixed(p)
+	return p:match("^~") ~= nil or p:match("^%.%.?[\\/]") ~= nil
+end
+
+local function env_name_for_value(abs)
+	local n = norm_path(abs)
+	if n == "" then
+		return nil
+	end
+	local function check(name)
+		local v = env_var_value(name)
+		if v and norm_path(v) == n then
+			return name
+		end
+		return nil
+	end
+	if check("DOTDIR") then
+		return "DOTDIR"
+	end
+	if os.enum_env_vars then
+		for _, name in ipairs(os.enum_env_vars() or {}) do
+			if check(name) then
+				return name
+			end
+		end
+	end
+	return nil
+end
+
+-- `.\%DOTDIR%` / `~\%DOTDIR%` is the folder literally named `%DOTDIR%`
+-- under cwd/home. Only expand `%VAR%` when it starts the path.
+local function expand_path(path)
+	path = (path or ""):gsub('^"(.-)"$', "%1"):gsub("/", "\\")
+
+	-- Already-expanded `.\%DOTDIR%` → `.\C:\...\dotfiles`: map back to `%NAME%`.
+	local rel, rest = path:match("^(%.%.)[\\](.*)$")
+	if not rel then
+		rel, rest = path:match("^(%.)[\\](.*)$")
+	end
+	if not rel then
+		rel, rest = path:match("^(~)[\\](.*)$")
+	end
+	if rel and rest and is_abs_win(rest) then
+		local name = env_name_for_value(rest)
+		if name then
+			path = rel .. "\\" .. "%" .. name .. "%"
+		end
+	end
+
+	if path:match("^%%[^%%]+%%") then
+		path = expand_env(path)
+	end
+
+	rest = path:match("^~[\\](.*)$") or (path == "~" and "")
+	if rest then
+		local home = home_dir()
+		if home then
+			path = rest == "" and home or (home .. "\\" .. rest:gsub("^\\+", ""))
+		end
+	end
+
+	if path:match("^%a:$") then
+		return path .. "\\"
+	end
+	if not path:match("^%a:\\$") then
+		path = path:gsub("\\+$", "")
+	end
+
+	-- Keep `%` names literal. Join `.\` / `..\` onto cwd ourselves.
+	if path:find("%%", 1, true) then
+		local cwd = os.getcwd and os.getcwd() or ""
+		if path:match("^%.%.[\\]") then
+			local parent = cwd:match("^(.*)[\\/][^\\/]+$") or cwd
+			return parent .. "\\" .. path:gsub("^%.%.[\\]+", "")
+		end
+		if path:match("^%.[\\]") then
+			return cwd .. "\\" .. path:gsub("^%.[\\]+", "")
+		end
+		return path
+	end
+
+	if os.getfullpathname and path ~= "" then
+		path = os.getfullpathname(path) or path
+	end
+	return path
+end
+
+local function resolves_to_env_original(raw, resolved)
+	if not is_rel_prefixed(raw) then
+		return false
+	end
+	local resolved_n = norm_path(resolved)
+	if resolved_n == "" then
+		return false
+	end
+	for name in raw:gmatch("%%([^%%]+)%%") do
+		local v = env_var_value(name)
+		if v and norm_path(v) == resolved_n then
+			return true
+		end
+	end
+	local rest = raw:match("^%.%.?[\\/](.*)$") or raw:match("^~[\\/](.*)$")
+	if not rest then
+		return false
+	end
+	rest = rest:gsub("\\+$", "")
+	return is_abs_win(rest) and norm_path(rest) == resolved_n
 end
 
 --------------------------------------------------------------------------------
@@ -80,7 +246,6 @@ local function rm_dangerous(path)
 	if n == "" or is_dot_or_dotdot(n) then
 		return true
 	end
-	-- Drive root: C: or C:\
 	if n:match("^[A-Za-z]:$") or n:match("^[A-Za-z]:\\$") then
 		return true
 	end
@@ -94,7 +259,6 @@ local function path_exists(path)
 	if os.isfile and os.isfile(path) then
 		return true, "file"
 	end
-	-- Fallback when stubs/APIs differ (reparse points, etc.)
 	local f = io.open(path, "rb")
 	if f then
 		f:close()
@@ -109,11 +273,74 @@ local function rm_exec(cmd)
 	end
 end
 
--- NTFS reparse points (directory/file symlink, junction, mount point, etc.):
--- rm -rf must unlink the entry only, never walk the target. Hard links are not
--- reparse points: removing a name is correct (data stays if another name remains).
+local function entry_name(entry)
+	return type(entry) == "table" and entry.name or entry
+end
+
+local function entry_type(entry)
+	return type(entry) == "table" and (entry.type or "") or ""
+end
+
+local function child_full(dir, entry)
+	local name = entry_name(entry)
+	if type(name) ~= "string" or name == "" then
+		return nil
+	end
+	local base = name:match("[^\\/]+$") or name
+	if is_dot_or_dotdot(base) then
+		return nil
+	end
+	if name:match("^%a:") or name:match("^[\\/]") then
+		return name
+	end
+	return dir .. "\\" .. base
+end
+
+local function glob_try(fn, pattern)
+	if not fn then
+		return {}
+	end
+	local ok, result = pcall(fn, pattern, true, glob_flags)
+	if not (ok and type(result) == "table") then
+		ok, result = pcall(fn, pattern, true)
+	end
+	if ok and type(result) == "table" then
+		return result
+	end
+	return {}
+end
+
+local function glob_children(path)
+	local pattern = path .. "\\*"
+	local out = {}
+	for _, e in ipairs(glob_try(os.globfiles, pattern)) do
+		out[#out + 1] = e
+	end
+	for _, e in ipairs(glob_try(os.globdirs, pattern)) do
+		out[#out + 1] = e
+	end
+	return out
+end
+
+-- NTFS reparse points: unlink the entry only, never walk the target.
 local function is_reparse_point(path)
-	local p = io.popen("fsutil reparsepoint query " .. quote_cmd(path) .. " 2>nul")
+	if os.issymlink and os.issymlink(path) then
+		return true
+	end
+	local parent, base = path:match("^(.*)[\\/]([^\\/]+)$")
+	if parent and base then
+		for _, e in ipairs(glob_children(parent)) do
+			local name = entry_name(e)
+			local leaf = name and (name:match("[^\\/]+$") or name)
+			if leaf and leaf:lower() == base:lower() then
+				return entry_type(e):find("link", 1, true) ~= nil
+			end
+		end
+	end
+	if path:find("%%", 1, true) then
+		return false
+	end
+	local p = io.popen("fsutil reparsepoint query " .. quote_cmd_exec(path) .. " 2>nul")
 	if not p then
 		return false
 	end
@@ -122,22 +349,56 @@ local function is_reparse_point(path)
 	return out:find("Reparse Tag", 1, true) ~= nil
 end
 
-local function rm_reparse_entry(path)
-	if os.isdir and os.isdir(path) then
-		if os.rmdir then
-			return os.rmdir(path)
-		end
-		rm_exec("rmdir " .. quote_cmd(path))
+local function rm_file(path)
+	if os.unlink and os.unlink(path) then
 		return true
 	end
-	if os.unlink then
-		return os.unlink(path)
+	if os.remove and os.remove(path) then
+		return true
 	end
-	if os.remove then
-		return os.remove(path)
-	end
-	rm_exec("del /q " .. quote_cmd(path))
+	rm_exec("del /f /q " .. quote_cmd_exec(path))
 	return true
+end
+
+local function rm_empty_dir(path)
+	if os.rmdir then
+		return os.rmdir(path)
+	end
+	rm_exec("rmdir " .. quote_cmd_exec(path))
+	return true
+end
+
+local function rm_reparse_entry(path)
+	if os.isdir and os.isdir(path) then
+		return rm_empty_dir(path)
+	end
+	return rm_file(path)
+end
+
+-- Win32 APIs treat `%` as a literal name. Do not `rmdir /s` through CMD.
+local function rm_tree(path)
+	if is_reparse_point(path) then
+		return rm_reparse_entry(path)
+	end
+	local seen = {}
+	for _, e in ipairs(glob_children(path)) do
+		local full = child_full(path, e)
+		if full then
+			local key = full:lower()
+			if not seen[key] then
+				seen[key] = true
+				local typ = entry_type(e)
+				if typ:find("link", 1, true) then
+					rm_reparse_entry(full)
+				elseif typ:find("dir", 1, true) or (os.isdir and os.isdir(full)) then
+					rm_tree(full)
+				else
+					rm_file(full)
+				end
+			end
+		end
+	end
+	return rm_empty_dir(path)
 end
 
 local function glob_expand(path)
@@ -148,10 +409,7 @@ local function glob_expand(path)
 	local seen = {}
 	local prefix = path:match("^(.*)[\\/][^\\/]*$")
 	local function add(entry)
-		local name = entry
-		if type(entry) == "table" then
-			name = entry.name
-		end
+		local name = entry_name(entry)
 		if type(name) ~= "string" or name == "" then
 			return
 		end
@@ -163,7 +421,7 @@ local function glob_expand(path)
 		if prefix and prefix ~= "" and not name:match("^[A-Za-z]:") and not name:match("^[\\/]") then
 			name = prefix .. "\\" .. name
 		end
-		if os.getfullpathname then
+		if os.getfullpathname and not name:find("%%", 1, true) then
 			name = os.getfullpathname(name) or name
 		end
 		if not seen[name] then
@@ -171,13 +429,11 @@ local function glob_expand(path)
 			table.insert(matches, name)
 		end
 	end
-	if os.globfiles then
-		for _, m in ipairs(os.globfiles(path, true) or {}) do
-			add(m)
-		end
+	for _, m in ipairs(glob_try(os.globfiles, path)) do
+		add(m)
 	end
 	if os.globdirs then
-		for _, m in ipairs(os.globdirs(path, true) or {}) do
+		for _, m in ipairs(glob_try(os.globdirs, path)) do
 			add(m)
 		end
 	elseif os.glob then
@@ -186,6 +442,47 @@ local function glob_expand(path)
 		end
 	end
 	return matches
+end
+
+local function rm_one(path, recursive, empty_dir, force, verbose)
+	if rm_dangerous(path) then
+		print("rm: 拒绝删除 '" .. path .. "'")
+		return
+	end
+	local exists, kind = path_exists(path)
+	if not exists then
+		if not force then
+			print("rm: 无法删除 '" .. path .. "': 没有那个文件或目录")
+		end
+		return
+	end
+	if is_reparse_point(path) then
+		if verbose then
+			print("removed link '" .. path .. "'")
+		end
+		rm_reparse_entry(path)
+		return
+	end
+	if kind == "dir" then
+		if recursive then
+			if verbose then
+				print("removed directory '" .. path .. "'")
+			end
+			rm_tree(path)
+		elseif empty_dir then
+			if verbose then
+				print("removed directory '" .. path .. "'")
+			end
+			rm_empty_dir(path)
+		else
+			print("rm: 无法删除 '" .. path .. "': 是一个目录")
+		end
+		return
+	end
+	if verbose then
+		print("removed '" .. path .. "'")
+	end
+	rm_file(path)
 end
 
 local function rm_cmd(rest)
@@ -243,50 +540,16 @@ local function rm_cmd(rest)
 	end
 
 	for _, raw in ipairs(paths) do
-		local expanded = glob_expand(raw)
-		if #expanded == 0 then
-			if not force then
+		local target = expand_path(raw)
+		if resolves_to_env_original(raw, target) then
+			print("rm: 拒绝删除 '" .. raw .. "': 相对路径会指向环境变量的原目录")
+		else
+			local expanded = glob_expand(target)
+			if #expanded == 0 and not force then
 				print("rm: 无法删除 '" .. raw .. "': 没有那个文件或目录")
 			end
-		end
-		for _, path in ipairs(expanded) do
-			if rm_dangerous(path) then
-				print("rm: 拒绝删除 '" .. path .. "'")
-			else
-				local exists, kind = path_exists(path)
-				if not exists then
-					if not force then
-						print("rm: 无法删除 '" .. path .. "': 没有那个文件或目录")
-					end
-				elseif is_reparse_point(path) then
-					if verbose then
-						print("removed link '" .. path .. "'")
-					end
-					rm_reparse_entry(path)
-				elseif kind == "dir" then
-					if recursive then
-						if verbose then
-							print("removed directory '" .. path .. "'")
-						end
-						rm_exec("rmdir /s /q " .. quote_cmd(path))
-					elseif empty_dir then
-						if verbose then
-							print("removed directory '" .. path .. "'")
-						end
-						rm_exec("rmdir " .. quote_cmd(path))
-					else
-						print("rm: 无法删除 '" .. path .. "': 是一个目录")
-					end
-				else
-					if verbose then
-						print("removed '" .. path .. "'")
-					end
-					if force then
-						rm_exec("del /f /q " .. quote_cmd(path))
-					else
-						rm_exec("del /q " .. quote_cmd(path))
-					end
-				end
+			for _, path in ipairs(expanded) do
+				rm_one(path, recursive, empty_dir, force, verbose)
 			end
 		end
 	end
