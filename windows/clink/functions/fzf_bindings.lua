@@ -14,6 +14,9 @@ end
 
 local intercept = false
 local want_more = false
+-- True when the current complete() is descending after `/` on a directory.
+-- Unique file matches must keep the continuous loop (next-arg fzf).
+local slash_continue = false
 local pending_query = ""
 local selected_match_text = nil
 local selected_match_is_dir = false
@@ -201,50 +204,92 @@ local function expand_path_token(token)
 	return path
 end
 
+local function glob_entry(item)
+	local name, ftype
+	if type(item) == "table" then
+		name, ftype = item.name, item.type
+	else
+		name = item
+	end
+	if not name then
+		return nil
+	end
+	name = name:gsub("[/\\]+$", ""):match("([^/\\]+)$") or name
+	if name == "" or name == "." or name == ".." then
+		return nil
+	end
+	return name, ftype
+end
+
+local function entry_is_dir(path, name, ftype)
+	if ftype then
+		return ftype:find("dir", 1, true) ~= nil
+	end
+	local ok, isdir = pcall(function()
+		return os.isdir and os.isdir(path .. "\\" .. name)
+	end)
+	return ok and isdir
+end
+
+local function glob_dir_items(path, dirs_only)
+	local pattern = path .. "\\*"
+	if dirs_only and os.globdirs then
+		local ok, result = pcall(os.globdirs, pattern)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	if os.globfiles then
+		local ok, result = pcall(os.globfiles, pattern, true)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return nil
+end
+
 local function path_has_subdirs(token)
 	local path = expand_path_token(token)
 	if not path then
 		return false
 	end
-	local pattern = path .. "\\*"
-	local items
-	if os.globdirs then
-		local ok, result = pcall(os.globdirs, pattern)
-		if ok then
-			items = result
-		end
-	end
-	if not items and os.globfiles then
-		local ok, result = pcall(os.globfiles, pattern, true)
-		if ok then
-			items = result
-		end
-	end
-	if type(items) ~= "table" then
+	local items = glob_dir_items(path, true)
+	if not items then
 		return false
 	end
 	for _, item in ipairs(items) do
-		local name, ftype
-		if type(item) == "table" then
-			name, ftype = item.name, item.type
-		else
-			name = item
-		end
-		if name then
-			name = name:gsub("[/\\]+$", ""):match("([^/\\]+)$") or name
-			if name ~= "" and name ~= "." and name ~= ".." then
-				if not (ftype and not ftype:find("dir", 1, true)) then
-					local ok, isdir = pcall(function()
-						return os.isdir and os.isdir(path .. "\\" .. name)
-					end)
-					if ok and isdir then
-						return true
-					end
-				end
-			end
+		local name, ftype = glob_entry(item)
+		if name and entry_is_dir(path, name, ftype) then
+			return true
 		end
 	end
 	return false
+end
+
+-- Directory with no subdirs and exactly one file → that filename; else nil.
+local function dir_unique_file(token)
+	local path = expand_path_token(token)
+	if not path then
+		return nil
+	end
+	local items = glob_dir_items(path, false)
+	if not items then
+		return nil
+	end
+	local file
+	for _, item in ipairs(items) do
+		local name, ftype = glob_entry(item)
+		if name then
+			if entry_is_dir(path, name, ftype) then
+				return nil
+			end
+			if file then
+				return nil
+			end
+			file = name
+		end
+	end
+	return file
 end
 
 local function token_is_dir(token)
@@ -309,13 +354,14 @@ local function apply_selected_word(rl_buffer, snapshot, match_text)
 	rl_buffer:endundogroup()
 end
 
--- After accept: directory with subdirs → `\`; cd into a leaf dir or a file → space.
+-- After accept: directory with subdirs → `\`; leaf dir or file → space.
+-- Returns can_descend (keep completing this path), as_dir.
 local function after_accept(rl_buffer, is_dir)
 	local line = rl_buffer:getbuffer()
 	local cursor = rl_buffer:getcursor()
 	local before = line:sub(1, cursor - 1)
 	if before:match("[/\\]$") then
-		return true
+		return true, true
 	end
 	local token = before:match('"([^"]*)"$') or before:match("([^%s]+)$") or ""
 	local as_dir = is_dir or token_is_dir(token)
@@ -324,15 +370,15 @@ local function after_accept(rl_buffer, is_dir)
 			if not before:match("%s$") then
 				rl_buffer:insert(" ")
 			end
-			return false
+			return false, true
 		end
 		rl_buffer:insert("\\")
-		return true
+		return true, true
 	end
 	if not before:match("%s$") then
 		rl_buffer:insert(" ")
 	end
-	return false
+	return false, false
 end
 
 local function strip_cr(s)
@@ -432,11 +478,21 @@ local function run_fzf(matches)
 		end
 	end
 	if type(matches) ~= "table" or #matches <= 1 then
+		local unique = type(matches) == "table" and matches[1]
 		-- Unique match: let Clink insert it. Never insert a leftover file for `cd`.
-		if dir_only_complete and not env_name_complete and #matches == 1 and not match_exists_as_dir(matches[1]) then
+		if dir_only_complete and not env_name_complete and unique and not match_exists_as_dir(unique) then
 			intercept = false
 			selected_match_text = nil
 			selected_match_is_dir = false
+			return {}
+		end
+		-- `/` into a dir that has one child: accept it and keep the loop.
+		-- Ordinary Tab with a unique match still lets Clink insert and stop.
+		if slash_continue and unique then
+			selected_match_text = unique.match
+			selected_match_is_dir = match_is_dir(unique) or match_exists_as_dir(unique)
+			want_more = true
+			intercept = false
 			return {}
 		end
 		intercept = false
@@ -672,6 +728,7 @@ local function fzf_globstar_env(rl_buffer, line_state, root)
 end
 
 local function run_continuous_loop(rl_buffer)
+	slash_continue = false
 	while true do
 		local word, word_start, word_end, line = current_word_info(rl_buffer)
 		pending_query = query_from_word(word)
@@ -704,20 +761,34 @@ local function run_continuous_loop(rl_buffer)
 			intercept = false
 			return
 		end
+		local can_descend, as_dir
 		if selected_match_text then
 			apply_selected_word(rl_buffer, {
 				line = line,
 				word_start = word_start,
 				word_end = word_end,
 			}, keep_typed_prefix(word, selected_match_text))
-			local can_descend = after_accept(rl_buffer, selected_match_is_dir)
-			if not can_descend then
+			-- `/` on a file: space, then another fzf as if Tab on the next arg.
+			-- `/` on a leaf dir: space and stop. Enter never sets want_more.
+			can_descend, as_dir = after_accept(rl_buffer, selected_match_is_dir)
+			-- Dir with only one file (e.g. aliases\init.lua): take it, then next arg.
+			if want_more and can_descend then
+				local only = dir_unique_file(current_word_info(rl_buffer))
+				if only then
+					rl_buffer:insert(only .. " ")
+					can_descend = false
+					as_dir = false
+				end
+			end
+			if want_more and not can_descend and as_dir then
 				want_more = false
 			end
 		end
 		if not want_more then
 			return
 		end
+		-- Next complete() is a descend only when this path still ends with `\`.
+		slash_continue = can_descend == true
 		-- fzf --height leaves the prompt looking like the last name until redraw.
 		if rl_buffer.refreshline then
 			rl_buffer:refreshline()
@@ -761,7 +832,7 @@ end
 if rl.describemacro then
 	rl.describemacro(
 		"luafunc:fzf_complete_with_query",
-		"Use fzf for completion; / accepts and continues (dir=descend, file=next from cwd)"
+		"Use fzf for completion; / accepts and continues (dir=descend, file or single-file dir=next arg)"
 	)
 end
 
