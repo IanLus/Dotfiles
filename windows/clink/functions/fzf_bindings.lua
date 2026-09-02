@@ -636,6 +636,22 @@ local function restore_path_prefix(prev)
 	end
 end
 
+-- ** recursive listing uses FZF_COMPLETION_OPTS (clink-fzf mode=complete).
+-- Inject the same alt-h / alt-i binds as Ctrl+T without affecting ordinary Tab.
+local function with_fd_toggle_opts(fn)
+	local extra = os.getenv("FZF_FD_TOGGLE_OPTS")
+	if not extra or extra == "" then
+		return fn()
+	end
+	local prev = os.getenv("FZF_COMPLETION_OPTS")
+	os.setenv("FZF_COMPLETION_OPTS", join_str(prev, extra))
+	local ok, err = pcall(fn)
+	restore_env("FZF_COMPLETION_OPTS", prev)
+	if not ok then
+		error(err)
+	end
+end
+
 -- Point clink-fzf's ** listing at the expanded env dir; keep %VAR%\ on the line
 -- because getwordbreakinfo makes insert replace only the `**` tail.
 local function fzf_globstar_env(rl_buffer, line_state, root)
@@ -716,11 +732,13 @@ function fzf_complete_with_query(rl_buffer, line_state)
 	if fzf_complete_force and ends_with_globstar(line_state, rl_buffer) then
 		local word = current_word_info(rl_buffer)
 		local env_root = globstar_env_root(word)
-		if env_root then
-			fzf_globstar_env(rl_buffer, line_state, env_root)
-		else
-			fzf_complete_force(rl_buffer, line_state)
-		end
+		with_fd_toggle_opts(function()
+			if env_root then
+				fzf_globstar_env(rl_buffer, line_state, env_root)
+			else
+				fzf_complete_force(rl_buffer, line_state)
+			end
+		end)
 		return
 	end
 

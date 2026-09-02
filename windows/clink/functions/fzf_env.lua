@@ -18,8 +18,17 @@ local function command_on_path(name)
 end
 
 -- Relative paths for Ctrl+T and ** Tab (dirx on PATH; install/dirx.ps1 -> C:\Software\dirx).
-if command_on_path("dirx.exe") then
-	set_default("FZF_CTRL_T_COMMAND", "fzf-list-files.cmd $dir")
+-- Alt+H / Alt+I match zsh fd-toggle.sh. Header must not contain `|` (cmd pipe).
+-- alt-h / alt-i each need their own --bind; a comma after transform: is consumed.
+local has_dirx = command_on_path("dirx.exe")
+if has_dirx then
+	local tmp = os.getenv("TEMP") or os.getenv("TMP") or "."
+	local id = (os.getpid and os.getpid()) or os.getenv("USERNAME") or "user"
+	os.setenv("FZF_FD_STATE", tmp .. "\\fzf-fd-" .. tostring(id) .. ".txt")
+	local ctrl_t = os.getenv("FZF_CTRL_T_COMMAND")
+	if not ctrl_t or ctrl_t == "" or ctrl_t:find("fzf%-fd%-toggle%.cmd") then
+		os.setenv("FZF_CTRL_T_COMMAND", "fzf-list-files.cmd $dir")
+	end
 	set_default("FZF_ALT_C_COMMAND", "fzf-list-dirs.cmd $dir")
 end
 
@@ -31,11 +40,23 @@ local fzf_file_opts = table.concat({
 	'--bind "ctrl-/:change-preview-window(down|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up"',
 }, " ")
 
+-- Only Ctrl+T / ** (not ordinary Tab over already-built matches).
+local fzf_fd_toggle_opts = table.concat({
+	'--header "alt-h: hidden off / alt-i: ignore off"',
+	'--bind "alt-h:transform:fzf-fd-toggle.cmd hidden"',
+	'--bind "alt-i:transform:fzf-fd-toggle.cmd ignore"',
+}, " ")
+
 set_default("CLINK_FZF_PREVIEW_SIXELS", "1")
 
 set_default("FZF_DEFAULT_OPTS", "--border=rounded --info=inline --scrollbar=▌")
 
-os.setenv("FZF_CTRL_T_OPTS", fzf_file_opts)
+if has_dirx then
+	os.setenv("FZF_CTRL_T_OPTS", fzf_file_opts .. " " .. fzf_fd_toggle_opts)
+	os.setenv("FZF_FD_TOGGLE_OPTS", fzf_fd_toggle_opts)
+else
+	os.setenv("FZF_CTRL_T_OPTS", fzf_file_opts)
+end
 set_default("FZF_COMPLETION_OPTS", fzf_file_opts)
 os.setenv("FZF_ALT_C_OPTS", "--layout=reverse")
 

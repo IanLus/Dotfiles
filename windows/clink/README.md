@@ -84,6 +84,7 @@ clink/
   fzf-preview.cmd
   fzf-list-files.cmd
   fzf-list-dirs.cmd
+  fzf-fd-toggle.cmd        # Ctrl+T / **：Alt+H 隐藏文件，Alt+I 忽略规则
   aliases/init.lua
   functions/
     utf8_console.lua
@@ -100,7 +101,7 @@ clink/
 
 ## 快捷键与命令
 
-Tab / Ctrl+Space：fzf 筛选补全。窗口里 `/` 接受并继续（目录进下级，文件加空格后补下一参数），Enter 只接受。`**` 仍为递归。Ctrl+T 选文件，Ctrl+R 历史，Alt+C 进目录，Alt+Shift+/ 列出已绑定命令，Ctrl+/ 切换预览。
+Tab / Ctrl+Space：fzf 筛选补全。窗口里 `/` 接受并继续（目录进下级，文件加空格后补下一参数），Enter 只接受。`**` 仍为递归。Ctrl+T 选文件，Ctrl+R 历史，Alt+C 进目录，Alt+Shift+/ 列出已绑定命令，Ctrl+/ 切换预览。Ctrl+T 与 `**` 下 Alt+H 切换隐藏/点文件，Alt+I 切换是否显示被 `.gitignore` 忽略的文件。
 
 ```cmd
 mkcd mydir
