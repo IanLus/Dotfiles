@@ -4,6 +4,7 @@ rem Ctrl+T / ** listing. --reload keeps alt-h / alt-i; otherwise reset.
 rem State: hidden= / ignore= / root=  (FZF_FD_STATE or %TEMP%\fzf-fd-%USERNAME%.txt)
 
 if not defined FZF_FD_STATE set "FZF_FD_STATE=%TEMP%\fzf-fd-%USERNAME%.txt"
+for %%I in ("%FZF_FD_STATE%") do if not exist "%%~dpI" mkdir "%%~dpI" 2>nul
 
 set "RELOAD=0"
 set "ROOT="
@@ -40,9 +41,11 @@ if "!ROOT:~-1!"=="/" (
 )
 
 if not "!RELOAD!"=="1" (
-	> "%FZF_FD_STATE%" echo hidden=0
-	>> "%FZF_FD_STATE%" echo ignore=0
-	>> "%FZF_FD_STATE%" echo root=!ROOT!
+	> "%FZF_FD_STATE%" (
+		echo hidden=0
+		echo ignore=0
+		echo root=!ROOT!
+	)
 )
 
 set "DIRX_ATTR=/a:-s-h"
@@ -58,16 +61,27 @@ if "!IGNORE!"=="1" (
 	set "DIRX_GIT="
 )
 set "DIRX=dirx.exe /b /s !DIRX_SKIP! !DIRX_ATTR! !DIRX_GIT! !DIRX_DOT! -I .git --bare-relative --utf8"
+set "LISTOUT=%FZF_FD_STATE%.lst"
+rem dirx --git-ignore writes `debug: glob` to stdout. Filter via a file so this
+rem script can itself be piped to fzf (a pipe inside a piped .cmd drops output).
 
-if "!ROOT!"=="." (
-	!DIRX!
-	goto :eof
-)
+if "!ROOT!"=="." goto cwd
 if "!ROOT:~1,1!"==":" goto abs
 if /i "!ROOT:~0,2!."=="\\." goto abs
-!DIRX! "!ROOT!"
-goto :eof
+!DIRX! "!ROOT!" > "%LISTOUT%"
+goto emit
+
+:cwd
+!DIRX! > "%LISTOUT%"
+goto emit
 
 :abs
 cd /d "!ROOT!" || exit /b 1
-!DIRX!
+!DIRX! > "%LISTOUT%"
+goto emit
+
+:emit
+if exist "%LISTOUT%" (
+	findstr /v /b /c:"debug: " "%LISTOUT%"
+	del /q "%LISTOUT%" 2>nul
+)

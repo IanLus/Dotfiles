@@ -22,7 +22,16 @@ end
 -- alt-h / alt-i each need their own --bind; a comma after transform: is consumed.
 local has_dirx = command_on_path("dirx.exe")
 if has_dirx then
-	local tmp = os.getenv("TEMP") or os.getenv("TMP") or "."
+	-- Profile-local path (not an official fzf variable). Holds hidden/ignore/root
+	-- for Alt+H / Alt+I. Recreated on each Ctrl+T if TEMP files were wiped.
+	local tmp = os.getenv("TEMP") or os.getenv("TMP") or ""
+	if tmp == "" then
+		local localapp = os.getenv("LOCALAPPDATA")
+		tmp = (localapp and localapp ~= "") and (localapp .. "\\Temp") or "."
+	end
+	if os.isdir and not os.isdir(tmp) and os.mkdir then
+		os.mkdir(tmp)
+	end
 	local id = (os.getpid and os.getpid()) or os.getenv("USERNAME") or "user"
 	os.setenv("FZF_FD_STATE", tmp .. "\\fzf-fd-" .. tostring(id) .. ".txt")
 	local ctrl_t = os.getenv("FZF_CTRL_T_COMMAND")

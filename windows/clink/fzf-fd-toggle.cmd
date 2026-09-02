@@ -3,6 +3,7 @@ setlocal EnableExtensions EnableDelayedExpansion
 rem fzf transform for alt-h / alt-i: one action line, no file list.
 
 if not defined FZF_FD_STATE set "FZF_FD_STATE=%TEMP%\fzf-fd-%USERNAME%.txt"
+for %%I in ("%FZF_FD_STATE%") do if not exist "%%~dpI" mkdir "%%~dpI" 2>nul
 
 set "CMD=%~1"
 if /i not "!CMD!"=="hidden" if /i not "!CMD!"=="ignore" (
@@ -27,9 +28,11 @@ if /i "!CMD!"=="hidden" (
 	set /a IGNORE=1-IGNORE
 )
 
-> "%FZF_FD_STATE%" echo hidden=!HIDDEN!
->> "%FZF_FD_STATE%" echo ignore=!IGNORE!
->> "%FZF_FD_STATE%" echo root=!ROOT!
+> "%FZF_FD_STATE%" (
+	echo hidden=!HIDDEN!
+	echo ignore=!IGNORE!
+	echo root=!ROOT!
+)
 
 set "H=off"
 set "I=off"
