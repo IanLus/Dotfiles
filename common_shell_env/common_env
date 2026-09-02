@@ -35,12 +35,20 @@ export FZF_DEFAULT_OPTS="
   --walker-skip .git,node_modules,target
   --bind 'ctrl-f:preview-page-down,ctrl-b:preview-page-up'"
 
-## ctrl+t 用于搜索文件/路径
-export FZF_CTRL_T_COMMAND='fd --follow --color=always'
+## ctrl+t / **：alt-h 切换隐藏文件，alt-i 切换是否显示被忽略文件
+_FZF_FD_TOGGLE="${DOTDIR}/fzf/fd-toggle.sh"
+_FZF_FD_TOGGLE_OPTS="
+  --header 'alt-h: hidden off | alt-i: ignore off'
+  --bind 'alt-h:transform:${_FZF_FD_TOGGLE} hidden'
+  --bind 'alt-i:transform:${_FZF_FD_TOGGLE} ignore'"
+export FZF_CTRL_T_COMMAND="${_FZF_FD_TOGGLE} list ."
 # Preview file content using bat (https://github.com/sharkdp/bat)
 export FZF_CTRL_T_OPTS="
   --preview 'less {}' --preview-window='65%'
-  --bind 'ctrl-/:change-preview-window(down|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up'"
+  --bind 'ctrl-/:change-preview-window(down|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up'
+  ${_FZF_FD_TOGGLE_OPTS}"
+export FZF_COMPLETION_PATH_OPTS="${_FZF_FD_TOGGLE_OPTS}"
+unset _FZF_FD_TOGGLE _FZF_FD_TOGGLE_OPTS
 
 ## alt+c用于搜索路径并切换过去
 export FZF_ALT_C_COMMAND="fd -td --follow --color=always"

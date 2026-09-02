@@ -2,7 +2,7 @@ eval "$(fzf --zsh)"
 # vim ~/**<tab> runs fzf_compgen_path() with the prefix (~/) as the first argument
 # cd foo**<tab> runs fzf_compgen_dir() with the prefix (foo) as the first argument
 _fzf_compgen_path() {
-  fd --type f --hidden --follow --exclude ".git" . "$1"
+  "$DOTDIR/fzf/fd-toggle.sh" list "${1:-.}"
 }
 
 # Use fd to generate the list for directory completion
