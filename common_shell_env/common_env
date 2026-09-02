@@ -67,3 +67,4 @@ export KITTY_CONFIG_DIRECTORY=$DOTDIR/kitty
 export OPENCLAW_API_URL=http://localhost:11434
 export HF_ENDPOINT=https://hf-mirror.com
 export COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+export COREPACK_HOME="$XDG_CACHE_HOME/node/corepack"
