@@ -25,3 +25,27 @@ _fzf_comprun() {
     *)            fzf --preview 'bat -n --color=always {}' "$@" ;;
   esac
 }
+
+# 从 git status 选文件并用 $EDITOR 打开；预览为该文件的 git diff。
+# 路径解析 / diff 预览见 fzf/vgs.lua（zsh 与 Clink 共用）。
+vgs() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+    print -u2 'vgs: not a git repository'
+    return 1
+  }
+
+  local helper="$DOTDIR/fzf/vgs-file.sh"
+  local list
+  list=$("$helper" list) || return
+  if [[ -z $list ]]; then
+    print -u2 'vgs: working tree clean'
+    return 0
+  fi
+
+  print -r -- "$list" |
+    fzf --ansi --nth=2.. \
+      --preview-window=50% \
+      --preview "'$helper' preview {}" \
+      --bind "ctrl-/:change-preview-window(down|hidden|)" \
+      --bind "enter:become:'$helper' open {}"
+}
