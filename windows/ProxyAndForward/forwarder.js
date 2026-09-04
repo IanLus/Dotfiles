@@ -30,8 +30,9 @@ const host = mode === "mirrored" ? "127.0.0.1" : "0.0.0.0";
 console.log(`WSL mode: ${mode}, listening on ${host}`);
 
 const forwards = [
-  { listen: 34568, target: "10.41.13.24", port: 34568, name: "platform-api" },
-  { listen: 34571, target: "10.41.13.23", port: 34571, name: "law-api" },
+  { listen: 34568, target: "10.41.13.22", port: 34568, name: "platform-system" },
+  { listen: 34571, target: "10.41.13.23", port: 34571, name: "law-server" },
+  { listen: 34572, target: "10.41.13.24", port: 34572, name: "digit-server" },
 ];
 
 forwards.forEach(({ listen, target, port, name }) => {
