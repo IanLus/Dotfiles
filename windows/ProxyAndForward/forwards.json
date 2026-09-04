@@ -1,0 +1,5 @@
+[
+  { "listen": 34568, "target": "10.41.13.22", "port": 34568, "name": "platform-system" },
+  { "listen": 34571, "target": "10.41.13.23", "port": 34571, "name": "law-server" },
+  { "listen": 34572, "target": "10.41.13.24", "port": 34572, "name": "digit-server" }
+]

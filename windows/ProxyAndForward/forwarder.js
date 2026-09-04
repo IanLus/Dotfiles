@@ -5,13 +5,18 @@
 // 镜像模式：WSL 与 Windows 共享 127.0.0.1，监听 127.0.0.1 即可。
 // NAT 模式：WSL 有独立网络，需监听 0.0.0.0，WSL 通过 Windows 网关 IP 访问。
 //
-// 用法: node atrust-forwarder.js [mode]
-//   node atrust-forwarder.js        # 自动检测模式
-//   node atrust-forwarder.js mirrored # 强制镜像模式 (监听 127.0.0.1)
-//   node atrust-forwarder.js nat      # 强制 NAT 模式 (监听 0.0.0.0)
+// 转发规则默认读同目录 forwards.json，可用 FORWARDER_CONFIG 或 .json 参数覆盖。
+//
+// 用法: node forwarder.js [mode] [config.json]
+//   node forwarder.js                 # 自动检测模式
+//   node forwarder.js mirrored        # 强制镜像模式 (监听 127.0.0.1)
+//   node forwarder.js nat             # 强制 NAT 模式 (监听 0.0.0.0)
+//   node forwarder.js forwards.json
 // 按 Ctrl+C 停止
 
+const fs = require("fs");
 const net = require("net");
+const path = require("path");
 const { execSync } = require("child_process");
 
 function detectMode() {
@@ -24,16 +29,48 @@ function detectMode() {
   }
 }
 
-const mode = process.argv[2] || detectMode();
+function resolveConfigPath(args) {
+  const fromArg = args.find((a) => a.endsWith(".json"));
+  if (fromArg) {
+    return path.resolve(fromArg);
+  }
+  if (process.env.FORWARDER_CONFIG) {
+    return path.resolve(process.env.FORWARDER_CONFIG);
+  }
+  return path.join(__dirname, "forwards.json");
+}
+
+function loadForwards(configPath) {
+  const data = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const list = Array.isArray(data) ? data : data.forwards;
+  if (!Array.isArray(list)) {
+    throw new Error(`${configPath} must be an array or { "forwards": [...] }`);
+  }
+  return list.map((item, i) => {
+    const listen = Number(item.listen);
+    const port = Number(item.port);
+    const target = item.target;
+    if (!Number.isInteger(listen) || listen <= 0 || !target || !Number.isInteger(port) || port <= 0) {
+      throw new Error(`${configPath} [${i}] needs listen, target, port`);
+    }
+    return {
+      listen,
+      target: String(target),
+      port,
+      name: item.name ? String(item.name) : `${target}:${port}`,
+    };
+  });
+}
+
+const args = process.argv.slice(2).filter((a) => a !== "--");
+const modeArg = args.find((a) => a === "mirrored" || a === "nat");
+const mode = modeArg || detectMode();
 const host = mode === "mirrored" ? "127.0.0.1" : "0.0.0.0";
+const configPath = resolveConfigPath(args);
+const forwards = loadForwards(configPath);
 
 console.log(`WSL mode: ${mode}, listening on ${host}`);
-
-const forwards = [
-  { listen: 34568, target: "10.41.13.22", port: 34568, name: "platform-system" },
-  { listen: 34571, target: "10.41.13.23", port: 34571, name: "law-server" },
-  { listen: 34572, target: "10.41.13.24", port: 34572, name: "digit-server" },
-];
+console.log(`config: ${configPath}`);
 
 forwards.forEach(({ listen, target, port, name }) => {
   const server = net.createServer((clientSocket) => {
