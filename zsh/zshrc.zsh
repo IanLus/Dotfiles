@@ -44,7 +44,8 @@ zstyle ':fzf-tab:*' fzf-flags --height='80%' --color=bg+:23,border:#cceeff \
   --border=rounded -e --ansi --preview-window='50%' \
   --bind 'ctrl-/:change-preview-window(down|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up'
 # enable tmux popup for fzf to show results
-zstyle ':fzf-tab:*' fzf-command ftb-tmux-popup
+[[ -f $DOTDIR/fzf/preview-which.zsh ]] && source $DOTDIR/fzf/preview-which.zsh
+zstyle ':fzf-tab:*' fzf-command _dotfiles_ftb_popup
 # set the lines number of fzf's prompt occupied
 zstyle ':fzf-tab:*' fzf-pad 4
 # bind <space> to accept the selected item
@@ -111,7 +112,15 @@ zstyle ':fzf-tab:complete:*:options' fzf-preview
 zstyle ':fzf-tab:complete:*:argument-1' fzf-preview
 zstyle ':fzf-tab:complete:systemctl:argument-rest' fzf-preview
 zstyle ':fzf-tab:complete:(_zlua|-command-|tmux*|docker*|pkill*|git-stash):*' fzf-preview
-zstyle ':fzf-tab:complete:type:*' fzf-preview 'type ${(Q)word} 2>/dev/null'
+# which/type 的别名和函数定义在预览子进程里不可见，由 _dotfiles_ftb_popup 导出后再预览
+zstyle ':fzf-tab:complete:(which|whence|where|type):*' fzf-preview \
+  "source ${(q)DOTDIR}/fzf/preview-which.zsh && _dotfiles_preview_which"
+# 去掉 _git / p10k / zinit 等内部函数，避免 which 列表多出几百项
+zstyle ':completion:*:*:(which|whence|where|type):functions' ignored-patterns \
+  '[_.]*' '-*' 'prompt_*' 'instant_prompt_*'
+zstyle ':completion:*:*:(which|whence|where|type):*' extra-verbose false
+zstyle ':completion:*:*:(which|whence|where|type):*' tag-order \
+  'aliases functions builtins reserved-words commands'
 
 # environment variable
 zstyle ':fzf-tab:complete:(-command-|-parameter-|-brace-parameter-|export|unset|expand):*' \
@@ -121,6 +130,10 @@ compdef _mv advmv
 compdef _cp advcp
 
 [[ -f $DOTDIR/aliases ]] && source $DOTDIR/aliases
+(( $+functions[_dotfiles_dump_which_defs] )) && _dotfiles_dump_which_defs
+if (( $+_dotfiles_which_builtins )) && [[ ! -s $_dotfiles_which_builtins ]]; then
+  { man zshbuiltins 2>/dev/null | col -bx >| $_dotfiles_which_builtins } >/dev/null 2>&1 &!
+fi
 [[ -f $DOTDIR/fzf/fzf.zsh ]] && source $DOTDIR/fzf/fzf.zsh
 [[ -f $XDG_CONFIG_HOME/cargo/env ]] && source $XDG_CONFIG_HOME/cargo/env
 [[ -f $HOME/.openclaw/completions/openclaw.zsh ]] && source $HOME/.openclaw/completions/openclaw.zsh
