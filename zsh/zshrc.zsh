@@ -94,6 +94,8 @@ zstyle ':fzf-tab:*' popup-min-size 120 50
 zstyle ':fzf-tab:complete:diff:*' popup-min-size 80 16
 # switch group using `<` and `>`
 zstyle ':fzf-tab:*' switch-group '<' '>'
+# default active-group-style is bold, too faint on already-colored headers
+zstyle ':fzf-tab:*' active-group-style bold underline
 # set case insensitive when change directory with cd
 zstyle ':completion:*' matcher-list 'm:{[:lower:][:upper:]}={[:upper:][:lower:]}' 'm:{[:lower:][:upper:]}={[:upper:][:lower:]} l:|=* r:|=*' 'm:{[:lower:][:upper:]}={[:upper:][:lower:]} l:|=* r:|=*' 'm:{[:lower:][:upper:]}={[:upper:][:lower:]} l:|=* r:|=*'
 zstyle ':completion:*:*:docker:*' option-stacking yes
