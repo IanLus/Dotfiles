@@ -1,0 +1,7 @@
+#!/bin/sh
+# 与 nvim clipboard provider 相同：UTF-8 stdin → 系统剪贴板，无 BOM
+cmd=$(command -v win32yank.exe) || cmd=$(command -v win32yank) || {
+  printf '%s\n' 'clip: win32yank.exe not found' >&2
+  exit 127
+}
+exec "$cmd" -i --crlf

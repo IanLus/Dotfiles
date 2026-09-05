@@ -35,6 +35,7 @@ _dotfiles_path_add() {
   fi
 }
 _dotfiles_path_add \
+  "$DOTDIR/bin" \
   "$XDG_DATA_HOME/bin" \
   "$XDG_DATA_HOME/bob/nvim-bin" \
   ${PNPM_HOME:+"$PNPM_HOME/bin"} \

@@ -53,6 +53,8 @@ alias tkill='pkill -f tmux'
 alias tl='tmux ls'
 alias tn='tmux new -s'
 alias treload='tmux source-file $XDG_CONFIG_HOME/dotfiles/tmux/tmux.conf'
+# WSL 里 clip.exe 走互操作，脚本拦不住；交互中改走 $DOTDIR/bin/clip（win32yank）
+alias clip.exe=clip
 alias spr=proxy_on
 alias cpr=proxy_off
 alias gpr=proxy_status
