@@ -42,6 +42,7 @@ zstyle ':fzf-tab:complete:kill:*' popup-pad 0 3
 # NOTE: fzf-tab does not follow FZF_DEFAULT_OPTS by default
 zstyle ':fzf-tab:*' fzf-flags --height='80%' --color=bg+:23,border:#cceeff \
   --border=rounded -e --ansi --preview-window='50%' \
+  --tiebreak=begin,length \
   --bind 'ctrl-/:change-preview-window(down|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up'
 # enable tmux popup for fzf to show results
 [[ -f $DOTDIR/fzf/preview-which.zsh ]] && source $DOTDIR/fzf/preview-which.zsh
