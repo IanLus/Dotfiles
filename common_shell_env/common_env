@@ -35,11 +35,18 @@ export SVN_CONFIG_DIR="$XDG_CONFIG_HOME/subversion"
 export TZ="Asia/Shanghai"
 
 ## fzf相关配置
+# tmux 3.7+：--tmux 用原生浮动窗（可切 pane）；再写 --border 会变成模态弹层
 export FZF_DEFAULT_OPTS="
-  --height 80% -e --ansi --reverse --border=rounded
+  --height 80% -e --ansi --reverse
   --color=border:#cceeff
   --walker-skip .git,node_modules,target
   --bind 'ctrl-f:preview-page-down,ctrl-b:preview-page-up'"
+if [[ -n $TMUX ]]; then
+  FZF_DEFAULT_OPTS+=" --tmux center,80%"
+else
+  FZF_DEFAULT_OPTS+=" --border=rounded"
+fi
+export FZF_DEFAULT_OPTS
 
 ## ctrl+t / **：alt-h 切换隐藏文件，alt-i 切换是否显示被忽略文件
 _FZF_FD_TOGGLE="${DOTDIR}/fzf/fd-toggle.sh"
