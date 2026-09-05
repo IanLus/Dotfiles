@@ -112,19 +112,19 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview 'less ${(Q)realpath}'
 zstyle ':fzf-tab:complete:*:options' fzf-preview
 zstyle ':fzf-tab:complete:*:argument-1' fzf-preview
 zstyle ':fzf-tab:complete:systemctl:argument-rest' fzf-preview
-zstyle ':fzf-tab:complete:(_zlua|-command-|tmux*|docker*|pkill*|git-stash):*' fzf-preview
-# which/type 的别名和函数定义在预览子进程里不可见，由 _dotfiles_ftb_popup 导出后再预览
-zstyle ':fzf-tab:complete:(which|whence|where|type):*' fzf-preview \
+zstyle ':fzf-tab:complete:(_zlua|tmux*|docker*|pkill*|git-stash):*' fzf-preview
+# 命令位（gs<Tab>）以及 which/type：预览别名/函数/内置（定义由 _dotfiles_ftb_popup 导出）
+zstyle ':fzf-tab:complete:(-command-|which|whence|where|type):*' fzf-preview \
   "source ${(q)DOTDIR}/fzf/preview-which.zsh && _dotfiles_preview_which"
-# 去掉 _git / p10k / zinit 等内部函数，避免 which 列表多出几百项
-zstyle ':completion:*:*:(which|whence|where|type):functions' ignored-patterns \
+# 命令位和 which 都去掉 _git / p10k / zinit 等内部函数
+zstyle ':completion:*:*:(-command-|which|whence|where|type):functions' ignored-patterns \
   '[_.]*' '-*' 'prompt_*' 'instant_prompt_*'
-zstyle ':completion:*:*:(which|whence|where|type):*' extra-verbose false
+zstyle ':completion:*:*:(-command-|which|whence|where|type):*' extra-verbose false
 zstyle ':completion:*:*:(which|whence|where|type):*' tag-order \
   'aliases functions builtins reserved-words commands'
 
 # environment variable
-zstyle ':fzf-tab:complete:(-command-|-parameter-|-brace-parameter-|export|unset|expand):*' \
+zstyle ':fzf-tab:complete:(-parameter-|-brace-parameter-|export|unset|expand):*' \
 	fzf-preview 'echo ${(P)word}'
 
 compdef _mv advmv

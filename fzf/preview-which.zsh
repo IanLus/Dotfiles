@@ -1,5 +1,5 @@
 #!/hint/zsh
-# fzf-tab preview for which/whence/where/type.
+# fzf-tab preview for command-position, which, whence, where, and type.
 # Preview runs in a new zsh, so aliases/functions are dumped from the parent first.
 
 _dotfiles_which_defs=/tmp/fzf-tab-which-defs-$USER.zsh
@@ -37,13 +37,27 @@ _dotfiles_which_builtin_help() {
 
 # Cheap dump: aliases + already-loaded user functions only.
 # Do not walk _ftb_compcap or autoload +X — which's candidate list is huge.
+typeset -g _dotfiles_which_defs_sig
 _dotfiles_dump_which_defs() {
   emulate -L zsh
-  local k
+  local k sig
+  local -a _pairs
   local -A _ftb_aliasdump _ftb_funcdump
+
+  for k in ${(ko)aliases}; do
+    _pairs+="$k=$aliases[$k]"
+  done
+  (( $+galiases )) && for k in ${(ko)galiases}; do
+    _pairs+="g:$k=$galiases[$k]"
+  done
+  sig="${(j:;:)_pairs}|${#${(k)functions:#([_.]*|-*|prompt_*|instant_prompt_*)}}"
+  [[ $sig == $_dotfiles_which_defs_sig && -s $_dotfiles_which_defs ]] && return
 
   for k in ${(k)aliases}; do
     _ftb_aliasdump[$k]=$aliases[$k]
+  done
+  (( $+galiases )) && for k in ${(k)galiases}; do
+    _ftb_aliasdump[$k]=${_ftb_aliasdump[$k]:-$galiases[$k]}
   done
 
   for k in ${(k)functions:#([_.]*|-*|prompt_*|instant_prompt_*)}; do
@@ -53,12 +67,13 @@ _dotfiles_dump_which_defs() {
   done
 
   { typeset -p _ftb_aliasdump; typeset -p _ftb_funcdump } >| $_dotfiles_which_defs
+  _dotfiles_which_defs_sig=$sig
 }
 
 _dotfiles_ftb_popup() {
-  case ${words[1]:t} in
-    which|whence|where|type) _dotfiles_dump_which_defs ;;
-  esac
+  if [[ $_ftb_curcontext == *:-command-:* || ${words[1]:t} == (which|whence|where|type) ]]; then
+    _dotfiles_dump_which_defs
+  fi
   ftb-tmux-popup "$@"
 }
 
