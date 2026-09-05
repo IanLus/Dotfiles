@@ -26,15 +26,13 @@ elif [ "$category" = image ]; then
     #    So we remove the last line and append the reset code to its previous line.
     kitten icat --clear --transfer-mode=memory --unicode-placeholder --stdin=no --place="$dim@0x0" "$file" | sed '$d' | sed $'$s/$/\e[m/'
 
-  # 2. Use chafa with Sixel output
+  # 2. chafa sixel。tmux 里走 passthrough，避免 WSL 像素尺寸为 0 时 tmux 丢掉 sixel
   elif command -v chafa >/dev/null; then
-    if [[ -n "$TMUX" ]] || [[ "$TERM" =~ tmux ]]; then
-      # 当前在 tmux 会话内
-      viu "$file" -w "${dim%x*}" -h "${dim#*x}"
-    else
-      # 不在 tmux 内（普通终端）
-      chafa -f sixels -s "$dim" "$file" --stretch --clear
+    chafa_opts=(-f sixels --probe=off --animate=off -s "$dim" --stretch --clear)
+    if [[ -n $TMUX || $TERM == *tmux* ]]; then
+      chafa_opts+=(--passthrough=tmux)
     fi
+    chafa "${chafa_opts[@]}" "$file"
     # Add a new line character so that fzf can display multiple images in the preview window
     echo
 
