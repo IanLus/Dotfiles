@@ -1,257 +1,245 @@
 #!/hint/zsh
-# WSL -> Windows 主机 Clash Verge 代理转发
+# Clash / 本机代理开关。
+# 非 WSL：默认 127.0.0.1:7890，只提供 proxy_on / off，不自动设。
+# WSL：按网络模式选 host，启动时探测成功才自动设。
 #
-# 支持两种 WSL 网络模式：
-#   - Mirrored（镜像模式，WSL2 新特性，推荐）：
-#       WSL 与 Windows 共享网络栈。代理直接走 127.0.0.1:7890。
-#       硬特征：存在 loopback0 接口（NAT 模式不会创建此接口）
-#   - NAT（旧模式，Hyper-V 默认）：
-#       WSL 有独立网络栈，localhost 不互通（但 localhostForwarding 仍可
-#       把 127.0.0.1 转发到主机，所以不能用 127.0.0.1 可达性判断模式）。
-#       主机 IP 即 WSL 默认网关（172.16.0.0/12 段），需要 Clash 开启
-#       allow-lan 监听 0.0.0.0:7890，WSL 通过网关 IP 访问。
-#       注意：NAT 模式默认 hostAddressLoopback=true，会在 lo 上绑定
-#       10.255.255.254/32（用于回环访问主机），这并非镜像模式特征，
-#       不能用作模式判据。
+# WSL 模式（先确认是 WSL，再判断）：
+#   - Mirrored：loopback0 存在 -> 127.0.0.1
+#   - NAT：默认网关在 172.16.0.0/12 -> 网关 IP（需 Clash allow-lan）
+#   - 仍不明再读 .wslconfig 的 networkingMode（9p，慢）
+# lo 上 10.255.255.254 是 NAT 的 hostAddressLoopback，不能当镜像依据。
 #
-# 模式判断优先级（不依赖 127.0.0.1 端口探测，避免 localhostForwarding 干扰）：
-#   1. 是否在 WSL 内
-#   2. 读 /mnt/c/Users/*/.wslconfig 的 networkingMode 字段（最权威）
-#   3. 网卡硬特征：存在 loopback0 接口（Mirrored 独有，NAT 绝不创建）
-#   4. NAT 兜底：默认网关在 172.16.0.0/12 段
-#   5. 其它（Bridged 等）：不自动设置代理
-#
-# 代理可用性检测：
-#   即使模式判断正确，Clash 可能没启动或未开 allow-lan。
-#   设置代理变量前先 TCP 探测代理端口，不可用则不设置（直连）。
-#   否则程序会尝试连死代理，所有请求都要等超时，比直连慢得多。
+# 探测：Clash 没开一般是 RST，立刻失败；2s 只会出现在端口被黑洞时。
+# 启动用 0.2s；proxy_on 仍用 2s。不可达就不设变量，避免请求卡在死代理上。
 
-# 判断是否在 WSL 内
-_wsl_in_wsl() {
-    [[ -n "$WSL_DISTRO_NAME" ]] || [[ -f /proc/sys/fs/binfmt_misc/WSLInterop ]]
+typeset -g _DOTFILES_PROXY_PORT=7890
+typeset -gi _DOTFILES_IN_WSL=0
+[[ -n $WSL_DISTRO_NAME || -f /proc/sys/fs/binfmt_misc/WSLInterop ]] && _DOTFILES_IN_WSL=1
+_wsl_in_wsl() { (( _DOTFILES_IN_WSL )) }
+
+# 用法：_dotfiles_port_open host port [timeout_secs]
+# /dev/tcp 是 bash 特性，zsh 没有。
+_dotfiles_port_open() {
+  local host=$1 port=${2:-$_DOTFILES_PROXY_PORT} secs=${3:-0.2}
+  [[ -n $host ]] || return 1
+  if (( $+commands[timeout] )); then
+    timeout "$secs" bash -c 'true < /dev/tcp/'"$host"'/'"$port" 2>/dev/null
+  else
+    bash -c 'true < /dev/tcp/'"$host"'/'"$port" 2>/dev/null
+  fi
 }
 
-# 读取 .wslconfig 中的 networkingMode 配置
-# 返回：mirrored / nat / 空（读取失败或未配置）
-# 注意：只读取，绝不修改原文件
-_wsl_read_wslconfig_mode() {
-    local cfg line mode=""
-    # 扫描 /mnt/c/Users/*/.wslconfig，跳过系统目录
-    for cfg in /mnt/c/Users/*/.wslconfig; do
-        [[ -f "$cfg" ]] || continue
-        case "$cfg" in
-            */All\ Users/*|*/Default*/*|*/Public/*) continue ;;
-        esac
-        # networkingMode 可能写在 [wsl2] 或 [experimental] 下，取第一行匹配
-        line=$(grep -iE '^[[:space:]]*networkingMode[[:space:]]*=' "$cfg" 2>/dev/null | head -1)
-        [[ -z "$line" ]] && continue
-        # 去掉 "networkingMode =" 前缀，再清理空白和引号
-        mode=${line#*=}
-        mode=${mode// /}
-        mode=${mode//	/}
-        mode=${mode//\"/}
-        mode=${mode//\'/}
-        mode=$(echo "$mode" | tr '[:upper:]' '[:lower:]')
-        break
-    done
-    case "$mode" in
-        mirrored|mirror) echo "mirrored" ;;
-        nat)             echo "nat" ;;
-        *)               echo "" ;;
-    esac
-}
-
-# 判断是否为 WSL 镜像模式（Mirrored）
-# 依据：.wslconfig 配置 或 网卡硬特征（loopback0 接口）
-# 注意：lo 上 10.255.255.254/32 是 NAT 模式 hostAddressLoopback=true 的默认行为，
-#       不能作为镜像模式判据，否则会把 NAT 误判为镜像
-_wsl_is_mirrored_mode() {
-    _wsl_in_wsl || return 1
-    # 依据 1：.wslconfig 显式配置
-    local cfg_mode
-    cfg_mode=$(_wsl_read_wslconfig_mode)
-    [[ "$cfg_mode" == "mirrored" ]] && return 0
-    [[ "$cfg_mode" == "nat" ]] && return 1
-    # 依据 2：网卡硬特征 - 存在 loopback0 接口（Mirrored 模式独有，NAT 绝不创建）
-    if ip link show loopback0 >/dev/null 2>&1; then
-        return 0
-    fi
+_dotfiles_set_proxy() {
+  local host=$1
+  if [[ -z $host ]]; then
+    print -u2 'proxy: empty host'
     return 1
+  fi
+  export http_proxy="http://$host:$_DOTFILES_PROXY_PORT"
+  export https_proxy=$http_proxy
+  export HTTP_PROXY=$http_proxy
+  export HTTPS_PROXY=$http_proxy
+  export no_proxy="localhost,127.0.0.1,::1,$host,.local,.internal,.lan"
+  export NO_PROXY=$no_proxy
+  export all_proxy="socks5://$host:$_DOTFILES_PROXY_PORT"
+  export ALL_PROXY=$all_proxy
 }
 
-# 判断是否为 WSL NAT 模式
-# 依据：非镜像 + 默认网关在 172.16.0.0/12 段
-_wsl_is_nat_mode() {
-    _wsl_in_wsl || return 1
-    _wsl_is_mirrored_mode && return 1
-    local gw
-    gw=$(ip route show 2>/dev/null | awk '/^default/ {print $3; exit}')
-    [[ -z "$gw" ]] && return 1
-    [[ "$gw" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
+_dotfiles_proxy_host() {
+  if (( $+functions[_wsl_proxy_host] )); then
+    _wsl_proxy_host
+  else
+    print -r -- 127.0.0.1
+  fi
 }
 
-# 根据当前模式确定代理 host（不探测可用性）
-# 输出：代理 host IP；镜像模式输出 127.0.0.1，NAT 模式输出网关 IP
-_wsl_proxy_host() {
-    if _wsl_is_mirrored_mode; then
-        echo "127.0.0.1"
+_dotfiles_resolve_host() {
+  local host=$1
+  if [[ -z $host ]]; then
+    (( $+functions[_wsl_clear_cache] )) && _wsl_clear_cache
+    host=$(_dotfiles_proxy_host)
+  fi
+  print -r -- $host
+}
+
+if (( _DOTFILES_IN_WSL )); then
+  _wsl_default_gw() {
+    if (( ${+_DOTFILES_WSL_GW} )); then
+      print -r -- $_DOTFILES_WSL_GW
+      return
+    fi
+    typeset -gx _DOTFILES_WSL_GW
+    _DOTFILES_WSL_GW=$(ip route show 2>/dev/null | awk '/^default/ {print $3; exit}')
+    print -r -- $_DOTFILES_WSL_GW
+  }
+
+  _wsl_has_loopback0() {
+    if (( ${+_DOTFILES_WSL_LOOPBACK0} )); then
+      (( _DOTFILES_WSL_LOOPBACK0 ))
+      return
+    fi
+    typeset -gi _DOTFILES_WSL_LOOPBACK0=0
+    ip link show loopback0 >/dev/null 2>&1 && _DOTFILES_WSL_LOOPBACK0=1
+    export _DOTFILES_WSL_LOOPBACK0
+    (( _DOTFILES_WSL_LOOPBACK0 ))
+  }
+
+  _wsl_read_wslconfig_mode() {
+    emulate -L zsh -o extendedglob
+    local cfg line mode=""
+    for cfg in /mnt/c/Users/*/.wslconfig(N); do
+      [[ -f $cfg ]] || continue
+      case $cfg in
+        */All\ Users/*|*/Default*/*|*/Public/*) continue ;;
+      esac
+      while IFS= read -r line; do
+        [[ ${(L)line} == [[:space:]]#networkingmode[[:space:]]#=* ]] || continue
+        mode=${line#*=}
+        mode=${(L)${mode//[\"\'[:space:]]}}
+        break
+      done < $cfg
+      [[ -n $mode ]] && break
+    done
+    case $mode in
+      mirrored|mirror) print mirrored ;;
+      nat) print nat ;;
+    esac
+  }
+
+  _wsl_is_nat_gw() {
+    local gw=$1
+    [[ -n $gw && $gw =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
+  }
+
+  # 镜像 -> 127.0.0.1；NAT -> 默认网关。结果缓存到环境，exec zsh 可复用。
+  _wsl_proxy_host() {
+    if (( ${+_DOTFILES_WSL_PROXY_HOST} )); then
+      print -r -- $_DOTFILES_WSL_PROXY_HOST
+      return
+    fi
+    typeset -gx _DOTFILES_WSL_PROXY_HOST=""
+    if _wsl_has_loopback0; then
+      _DOTFILES_WSL_PROXY_HOST=127.0.0.1
     else
-        ip route show 2>/dev/null | awk '/^default/ {print $3; exit}'
-    fi
-}
-
-# 检测 TCP 端口是否可达（带超时，避免卡住 shell 启动）
-# 用法：_wsl_port_open host port [timeout_secs]
-# 注意：/dev/tcp 是 bash 特性，zsh 不支持，必须通过 bash -c 调用
-_wsl_port_open() {
-    local host="$1" port="${2:-7890}" secs="${3:-2}"
-    [[ -z "$host" ]] && return 1
-    # 端口开立即返回 0；未开 RST 立即返回非 0；超时返回 124
-    if command -v timeout >/dev/null 2>&1; then
-        timeout "$secs" bash -c 'true < /dev/tcp/'"$host"'/'"$port" 2>/dev/null
-    else
-        bash -c 'true < /dev/tcp/'"$host"'/'"$port" 2>/dev/null
-    fi
-}
-
-# 统一设置代理变量（传入 host）
-_wsl_set_proxy() {
-    local host="$1"
-    if [[ -z "$host" ]]; then
-        echo "proxy auto: cannot determine proxy host, skipped" >&2
-        return 1
-    fi
-    export http_proxy="http://$host:7890"
-    export https_proxy="$http_proxy"
-    export HTTP_PROXY="$http_proxy"
-    export HTTPS_PROXY="$http_proxy"
-    export no_proxy="localhost,127.0.0.1,::1,$host,.local,.internal,.lan"
-    export NO_PROXY="$no_proxy"
-    export all_proxy="socks5://$host:7890"
-    export ALL_PROXY="$all_proxy"
-    return 0
-}
-
-# 自动根据 WSL 网络模式设置代理（含可用性检测）
-# 仅当：1) 在 WSL 内 2) 模式可识别 3) 代理端口可达 时才设置代理变量
-if _wsl_in_wsl; then
-    _wsl_proxy_host_ip=$(_wsl_proxy_host)
-    if [[ -n "$_wsl_proxy_host_ip" ]]; then
-        if _wsl_port_open "$_wsl_proxy_host_ip" 7890 2; then
-            _wsl_set_proxy "$_wsl_proxy_host_ip" || true
-        else
-            # 代理不可用：不设置代理变量，避免程序连死代理超时
-            # 国内资源直连正常；国外资源会慢，但比全部超时好
-            true
+      local gw cfg_mode
+      gw=$(_wsl_default_gw)
+      if _wsl_is_nat_gw $gw; then
+        _DOTFILES_WSL_PROXY_HOST=$gw
+      else
+        cfg_mode=$(_wsl_read_wslconfig_mode)
+        if [[ $cfg_mode == mirrored ]]; then
+          _DOTFILES_WSL_PROXY_HOST=127.0.0.1
+        elif [[ $cfg_mode == nat && -n $gw ]]; then
+          _DOTFILES_WSL_PROXY_HOST=$gw
         fi
+      fi
+    fi
+    print -r -- $_DOTFILES_WSL_PROXY_HOST
+  }
+
+  _wsl_clear_cache() {
+    unset _DOTFILES_WSL_PROXY_HOST _DOTFILES_WSL_GW _DOTFILES_WSL_LOOPBACK0
+  }
+
+  # 仅 WSL 自动设。已有代理变量则跳过。
+  if [[ -z ${http_proxy:-} ]]; then
+    _wsl_proxy_host_ip=$(_wsl_proxy_host)
+    if [[ -n $_wsl_proxy_host_ip ]] && _dotfiles_port_open $_wsl_proxy_host_ip $_DOTFILES_PROXY_PORT 0.2; then
+      _dotfiles_set_proxy $_wsl_proxy_host_ip || true
     fi
     unset _wsl_proxy_host_ip
+  fi
 fi
 
-# 关闭代理
 proxy_off() {
-    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY \
-          all_proxy ALL_PROXY no_proxy NO_PROXY
-    echo "proxy off"
+  unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY \
+    all_proxy ALL_PROXY no_proxy NO_PROXY
+  print proxy off
 }
 
-# 重新打开代理（根据当前模式自动选择 host；也允许手动指定 host）
-# 会探测代理端口，不可用时提示但不强制设置
+# 不传 host 时：WSL 按模式选，其它环境用 127.0.0.1
 proxy_on() {
-    local host="$1"
-    if [[ -z "$host" ]]; then
-        host=$(_wsl_proxy_host)
-    fi
-    if [[ -z "$host" ]]; then
-        echo "proxy on FAILED: cannot detect proxy host"
-        return 1
-    fi
-    if ! _wsl_port_open "$host" 7890 2; then
-        echo "proxy on WARNING: $host:7890 not reachable (Clash not running or allow-lan off)"
-        echo "  set proxy anyway? use: proxy_on_force $host"
-        return 1
-    fi
-    _wsl_set_proxy "$host"
-    echo "proxy on: $http_proxy"
+  local host
+  host=$(_dotfiles_resolve_host $1)
+  if [[ -z $host ]]; then
+    print 'proxy on FAILED: cannot detect proxy host'
+    return 1
+  fi
+  if ! _dotfiles_port_open $host $_DOTFILES_PROXY_PORT 2; then
+    print "proxy on WARNING: $host:$_DOTFILES_PROXY_PORT not reachable (Clash not running or allow-lan off)"
+    print "  set proxy anyway? use: proxy_on_force $host"
+    return 1
+  fi
+  _dotfiles_set_proxy $host
+  print "proxy on: $http_proxy"
 }
 
-# 强制设置代理（不探测可用性，用于代理暂时不可达但想预设变量的场景）
 proxy_on_force() {
-    local host="$1"
-    if [[ -z "$host" ]]; then
-        host=$(_wsl_proxy_host)
-    fi
-    if [[ -z "$host" ]]; then
-        echo "proxy on FAILED: cannot detect proxy host"
-        return 1
-    fi
-    _wsl_set_proxy "$host"
-    echo "proxy on (forced): $http_proxy"
+  local host
+  host=$(_dotfiles_resolve_host $1)
+  if [[ -z $host ]]; then
+    print 'proxy on FAILED: cannot detect proxy host'
+    return 1
+  fi
+  _dotfiles_set_proxy $host
+  print "proxy on (forced): $http_proxy"
 }
 
-# 查看代理状态
 proxy_status() {
-    if [[ -n "$http_proxy" ]]; then
-        echo "proxy ON  -> $http_proxy"
-        echo "  no_proxy: $no_proxy"
-    else
-        echo "proxy OFF"
-        # 探测代理是否可用，给用户提示
-        local host
-        host=$(_wsl_proxy_host)
-        if [[ -n "$host" ]]; then
-            if _wsl_port_open "$host" 7890 1; then
-                echo "  (代理可用 $host:7890，使用 proxy_on 开启)"
-            else
-                echo "  (代理不可用 $host:7890，Clash 未运行或未开 allow-lan)"
-            fi
-        fi
-    fi
+  if [[ -n $http_proxy ]]; then
+    print "proxy ON  -> $http_proxy"
+    print "  no_proxy: $no_proxy"
+    return
+  fi
+  print 'proxy OFF'
+  local host
+  host=$(_dotfiles_proxy_host)
+  [[ -n $host ]] || return
+  if _dotfiles_port_open $host $_DOTFILES_PROXY_PORT 1; then
+    print "  (代理可用 $host:$_DOTFILES_PROXY_PORT，使用 proxy_on 开启)"
+  else
+    print "  (代理不可用 $host:$_DOTFILES_PROXY_PORT，Clash 未运行或未开 allow-lan)"
+  fi
 }
 
-# 查看当前 WSL 网络模式（用于排错，输出判断依据）
 proxy_mode() {
-    if ! _wsl_in_wsl; then
-        echo "not in WSL"
-        return
-    fi
-    local gw cfg_mode host
-    gw=$(ip route show 2>/dev/null | awk '/^default/ {print $3; exit}')
-    cfg_mode=$(_wsl_read_wslconfig_mode)
-    host=$(_wsl_proxy_host)
+  if ! _wsl_in_wsl; then
+    print "not in WSL (proxy host defaults to 127.0.0.1:$_DOTFILES_PROXY_PORT)"
+    [[ -n $http_proxy ]] && print "  current: proxy ON -> $http_proxy"
+    return
+  fi
+  _wsl_clear_cache
+  local gw cfg_mode host has_loopback_ip=0
+  gw=$(_wsl_default_gw)
+  cfg_mode=$(_wsl_read_wslconfig_mode)
+  host=$(_wsl_proxy_host)
+  ip -4 addr show lo 2>/dev/null | grep -q '10\.255\.255\.254' && has_loopback_ip=1
 
-    local has_loopback0=0 has_loopback_ip=0
-    ip link show loopback0 >/dev/null 2>&1 && has_loopback0=1
-    ip -4 addr show lo 2>/dev/null | grep -q '10\.255\.255\.254' && has_loopback_ip=1
+  if _wsl_has_loopback0 || [[ $cfg_mode == mirrored ]]; then
+    print 'WSL MIRRORED mode (shared network stack, proxy -> 127.0.0.1)'
+    [[ -n $cfg_mode ]] && print "  -> .wslconfig networkingMode=$cfg_mode"
+    _wsl_has_loopback0 && print '  -> detected: loopback0 interface present'
+    [[ -n $gw ]] && print "  (gw=$gw, ignored for mode detection)"
+  elif _wsl_is_nat_gw $gw; then
+    print "WSL NAT mode (gw=$gw) - proxy via host gateway IP"
+    [[ -n $cfg_mode ]] && print "  -> .wslconfig networkingMode=$cfg_mode"
+    (( has_loopback_ip )) && print '  -> lo has 10.255.255.254/32 (hostAddressLoopback=true, NAT default, NOT mirrored indicator)'
+  elif [[ -z $gw ]]; then
+    print 'WSL: no default route'
+  else
+    print "WSL non-NAT/non-Mirrored mode (gw=$gw) - proxy not auto-enabled"
+  fi
 
-    if _wsl_is_mirrored_mode; then
-        echo "WSL MIRRORED mode (shared network stack, proxy -> 127.0.0.1)"
-        [[ -n "$cfg_mode" ]] && echo "  -> .wslconfig networkingMode=$cfg_mode"
-        [[ "$has_loopback0" -eq 1 ]] && echo "  -> detected: loopback0 interface present"
-        [[ -n "$gw" ]] && echo "  (gw=$gw, ignored for mode detection)"
-    elif [[ -n "$gw" ]] && [[ "$gw" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]; then
-        echo "WSL NAT mode (gw=$gw) - proxy via host gateway IP"
-        [[ -n "$cfg_mode" ]] && echo "  -> .wslconfig networkingMode=$cfg_mode"
-        [[ "$has_loopback_ip" -eq 1 ]] && echo "  -> lo has 10.255.255.254/32 (hostAddressLoopback=true, NAT default, NOT mirrored indicator)"
-    elif [[ -z "$gw" ]]; then
-        echo "WSL: no default route"
+  if [[ -n $host ]]; then
+    if _dotfiles_port_open $host $_DOTFILES_PROXY_PORT 1; then
+      print "  proxy reachable: $host:$_DOTFILES_PROXY_PORT OK"
     else
-        echo "WSL non-NAT/non-Mirrored mode (gw=$gw) - proxy not auto-enabled"
+      print "  proxy NOT reachable: $host:$_DOTFILES_PROXY_PORT (Clash 未运行或未开 allow-lan)"
     fi
-
-    # 代理可用性
-    if [[ -n "$host" ]]; then
-        if _wsl_port_open "$host" 7890 1; then
-            echo "  proxy reachable: $host:7890 OK"
-        else
-            echo "  proxy NOT reachable: $host:7890 (Clash 未运行或未开 allow-lan)"
-        fi
-    fi
-
-    # 当前代理变量状态
-    if [[ -n "$http_proxy" ]]; then
-        echo "  current: proxy ON -> $http_proxy"
-    else
-        echo "  current: proxy OFF (直连)"
-    fi
+  fi
+  if [[ -n $http_proxy ]]; then
+    print "  current: proxy ON -> $http_proxy"
+  else
+    print '  current: proxy OFF (直连)'
+  fi
 }

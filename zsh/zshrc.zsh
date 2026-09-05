@@ -169,5 +169,4 @@ mamba() {
   esac
 }
 
-# WSL proxy via Windows host Clash Verge (allow-lan + mixed-port 7890)
-[[ -f "$DOTDIR/zsh/proxy.zsh" ]] && source "$DOTDIR/zsh/proxy.zsh"
+[[ -f $DOTDIR/zsh/proxy.zsh ]] && source $DOTDIR/zsh/proxy.zsh
