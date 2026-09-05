@@ -1,9 +1,6 @@
 #!/hint/zsh
-if [ "$COMMON_INIT_ONCE" = "1" ]; then
-    return
-fi
-export COMMON_INIT_ONCE=1
-export DOTDIR=$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)
+# 本文件在 $DOTDIR/common_shell_env/；%x 是正在 source 的路径，免掉每次 git
+export DOTDIR="${${(%):-%x}:A:h:h}"
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$XDG_CONFIG_HOME/local"
 export XDG_CACHE_HOME="$XDG_CONFIG_HOME/cache"
@@ -19,7 +16,16 @@ export CONDA_ENVS_PATH="$XDG_CONFIG_HOME/conda/envs"
 export CONDARC="$DOTDIR/conda/condarc"
 export CRYPTOGRAPHY_OPENSSL_NO_LEGACY=1
 export PYTHONUSERBASE="$XDG_DATA_HOME"
-export PYTHONPATH="$PYTHONUSERBASE/lib/python$(python --version 2>&1 | awk '{print $2}' | tr -d .)/site-packages:$PYTHONPATH"
+# 已含用户 site-packages 则不再跑 python
+case ":${PYTHONPATH:-}:" in
+  *:"$PYTHONUSERBASE"/lib/python*site-packages:*) ;;
+  *)
+    _py_site="$PYTHONUSERBASE/lib/python$(python --version 2>&1 | awk '{print $2}' | tr -d .)/site-packages"
+    PYTHONPATH="${_py_site}${PYTHONPATH:+:$PYTHONPATH}"
+    unset _py_site
+    ;;
+esac
+export PYTHONPATH
 export NPM_CONFIG_USERCONFIG="$DOTDIR/node/npmrc"
 export PNPM_HOME="$XDG_DATA_HOME/pnpm"
 export RUSTUP_HOME="$XDG_CONFIG_HOME/rustup"
