@@ -35,7 +35,7 @@ export SVN_CONFIG_DIR="$XDG_CONFIG_HOME/subversion"
 export TZ="Asia/Shanghai"
 
 ## fzf相关配置
-# tmux 3.7+：--tmux 用原生浮动窗（可切 pane）；再写 --border 会变成模态弹层
+# tmux 里 --tmux 开浮动窗；不要再写 --border，否则会多套一层 tmux popup 外框
 export FZF_DEFAULT_OPTS="
   --height 80% -e --ansi --reverse
   --color=border:#cceeff
