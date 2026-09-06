@@ -105,9 +105,8 @@ zstyle ':completion:*:*:docker-*:*' option-stacking yes
 # show systemd unit status
 zstyle ':fzf-tab:complete:systemctl-*:*' fzf-preview 'SYSTEMD_COLORS=1 systemctl status $word'
 
-# show file contents
-# zstyle ':fzf-tab:complete:*:*' fzf-preview 'bat --style=numbers --color=always ${(Q)realpath}'
-zstyle ':fzf-tab:complete:*:*' fzf-preview 'less ${(Q)realpath}'
+# show file contents（图片走 lessfilter 的 sixel，与 Ctrl+T / ** 一致）
+zstyle ':fzf-tab:complete:*:*' fzf-preview '$DOTDIR/less/lessfilter.sh ${(Q)realpath}'
 # To disable or override preview for command options and subcommands, use
 zstyle ':fzf-tab:complete:*:options' fzf-preview
 zstyle ':fzf-tab:complete:*:argument-1' fzf-preview
