@@ -35,14 +35,14 @@ export SVN_CONFIG_DIR="$XDG_CONFIG_HOME/subversion"
 export TZ="Asia/Shanghai"
 
 ## fzf相关配置
-# tmux 里 --tmux 开浮动窗；不要再写 --border，否则会多套一层 tmux popup 外框
+# tmux popup-border-lines 已是 none，这里补 fzf 圆角，避免 --tmux 默认方框
 export FZF_DEFAULT_OPTS="
   --height 80% -e --ansi --reverse
   --color=border:#cceeff
   --walker-skip .git,node_modules,target
   --bind 'ctrl-f:preview-page-down,ctrl-b:preview-page-up'"
 if [[ -n $TMUX ]]; then
-  FZF_DEFAULT_OPTS+=" --tmux center,80%"
+  FZF_DEFAULT_OPTS+=" --tmux center,80% --border=rounded"
 else
   FZF_DEFAULT_OPTS+=" --border=rounded"
 fi
@@ -55,9 +55,9 @@ _FZF_FD_TOGGLE_OPTS="
   --bind 'alt-h:transform:${_FZF_FD_TOGGLE} hidden'
   --bind 'alt-i:transform:${_FZF_FD_TOGGLE} ignore'"
 export FZF_CTRL_T_COMMAND="${_FZF_FD_TOGGLE} list ."
-# Preview file content using bat (https://github.com/sharkdp/bat)
+# Ctrl+T 预览走 lessfilter（图片 sixel，其它仍是 bat/eza）
 export FZF_CTRL_T_OPTS="
-  --preview 'less {}' --preview-window='65%'
+  --preview '${DOTDIR}/less/lessfilter.sh {}' --preview-window='65%'
   --bind 'ctrl-/:change-preview-window(down|hidden|),ctrl-f:preview-page-down,ctrl-b:preview-page-up'
   ${_FZF_FD_TOGGLE_OPTS}"
 export FZF_COMPLETION_PATH_OPTS="${_FZF_FD_TOGGLE_OPTS}"

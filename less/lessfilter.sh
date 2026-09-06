@@ -9,9 +9,9 @@ if [ -d "$file" ]; then
 elif [ "$category" = image ]; then
   dim=${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}
   if [[ $dim == x ]]; then
-    dim=$(stty size </dev/tty | awk '{print $2 "x" $1}')
-  elif ! [[ $KITTY_WINDOW_ID ]] && ((FZF_PREVIEW_TOP + FZF_PREVIEW_LINES == $(stty size </dev/tty | awk '{print $1}'))); then
-    # Avoid scrolling issue when the Sixel image touches the bottom of the screen
+    dim=$(stty size </dev/tty 2>/dev/null | awk '{print $2 "x" $1}')
+  elif [[ -n $FZF_PREVIEW_LINES ]]; then
+    # 预留一行，避免 fzf 按 sixel 条带估高溢出后改画线框。
     # * https://github.com/junegunn/fzf/issues/2544
     dim=${FZF_PREVIEW_COLUMNS}x$((FZF_PREVIEW_LINES - 1))
   fi
@@ -26,13 +26,11 @@ elif [ "$category" = image ]; then
     #    So we remove the last line and append the reset code to its previous line.
     kitten icat --clear --transfer-mode=memory --unicode-placeholder --stdin=no --place="$dim@0x0" "$file" | sed '$d' | sed $'$s/$/\e[m/'
 
-  # 2. chafa sixel。tmux 里走 passthrough，避免 WSL 像素尺寸为 0 时 tmux 丢掉 sixel
+  # 2. chafa sixel。不要 --passthrough=tmux（fzf 会拆 DCS，漏出 tmux;），
+  #    也不要 --clear（CSI 2J 清整屏）。自定义 tmux 已能解析裸 sixel。
   elif command -v chafa >/dev/null; then
-    chafa_opts=(-f sixels --probe=off --animate=off -s "$dim" --stretch --clear)
-    if [[ -n $TMUX || $TERM == *tmux* ]]; then
-      chafa_opts+=(--passthrough=tmux)
-    fi
-    chafa "${chafa_opts[@]}" "$file"
+    chafa -f sixels --probe=off --animate=off --polite=on \
+      --passthrough=none -s "$dim" --stretch "$file"
     # Add a new line character so that fzf can display multiple images in the preview window
     echo
 
@@ -43,7 +41,9 @@ elif [ "$category" = image ]; then
     # that's the case here.
     imgcat -W "${dim%%x*}" -H "${dim##*x}" "$file"
   fi
-  exiftool "$file"
+  if command -v exiftool >/dev/null; then
+    exiftool "$file"
+  fi
 
 elif [ "$kind" = vnd.openxmlformats-officedocument.spreadsheetml.sheet ] ||
   [ "$kind" = vnd.ms-excel ]; then
