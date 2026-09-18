@@ -4,13 +4,17 @@ Ctrl+Alt+A  隐藏/显示左侧 Sidebery（Hide Sidebery）
 Ctrl+Alt+W  隐藏/显示顶部工具栏（Hide Topbar）
 Ctrl+Alt+C  全部隐藏（Hide All）
 Ctrl+Alt+E  锁定 Sidebery 展开（Lock Sidebery）
+Ctrl+J      打开工具栏下载悬浮面板（与下载按钮一致，不再弹出 Library 窗口）
 
 装回本机：
   pwsh -File windows/firefox/install.ps1
   pwsh -File windows/firefox/install.ps1 -InstallFlexFox
   pwsh -File windows/firefox/install.ps1 -InstallFlexFox -NoProxy
 
-安装脚本会写入 Toggle 快捷键，并启用 chrome/wallpaper*.png 作为首页壁纸。
+安装脚本会写入 Toggle 快捷键，启用 chrome/wallpaper*.png 作为首页壁纸，并把 AutoConfig 写到 firefox.exe 旁边，让 Ctrl+J 打开下载悬浮面板。Firefox 升级后若快捷键失效，再跑一次本脚本。
+
+跳过 AutoConfig：
+  pwsh -File windows/firefox/install.ps1 -SkipAutoconfig
 
 Userchrome Toggle Extended 仍需在扩展选项里：
 - 勾选 Allow multiple styles to be active together

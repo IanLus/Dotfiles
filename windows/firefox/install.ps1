@@ -1,12 +1,16 @@
 # Overlay this folder onto the Firefox profile. Does not vendor upstream FlexFox CSS.
 #   pwsh -File <dotfiles>\windows\firefox\install.ps1
 #   pwsh -File <dotfiles>\windows\firefox\install.ps1 -InstallFlexFox
+#
+# Ctrl+J is remapped by AutoConfig next to firefox.exe (needs a full quit/start).
 
 param(
     [string]$ProfilePath,
     [switch]$InstallFlexFox,
     [string]$Proxy,
-    [switch]$NoProxy
+    [switch]$NoProxy,
+    [string[]]$FirefoxInstallDir,
+    [switch]$SkipAutoconfig
 )
 
 $ErrorActionPreference = 'Stop'
@@ -198,6 +202,175 @@ function Install-HomepageWallpaper {
     Write-Host 'Homepage wallpaper enabled'
 }
 
+function Get-FirefoxInstallDirs {
+    param([string[]]$Requested)
+
+    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    function Add-Dir([string]$Dir) {
+        if ([string]::IsNullOrWhiteSpace($Dir)) { return }
+        try {
+            $full = [IO.Path]::GetFullPath($Dir)
+        } catch {
+            return
+        }
+        if (Test-Path -LiteralPath (Join-Path $full 'firefox.exe')) {
+            [void]$seen.Add($full)
+        }
+    }
+
+    foreach ($dir in @($Requested)) {
+        Add-Dir $dir
+    }
+    if ($seen.Count -gt 0) {
+        return @($seen)
+    }
+
+    Get-Process -Name firefox -ErrorAction SilentlyContinue | ForEach-Object {
+        try { Add-Dir (Split-Path -Parent $_.Path) } catch { }
+    }
+
+    foreach ($root in @(
+            'HKLM:\SOFTWARE\Mozilla\Mozilla Firefox'
+            'HKLM:\SOFTWARE\WOW6432Node\Mozilla\Mozilla Firefox'
+        )) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue | ForEach-Object {
+            $main = Join-Path $_.PSPath 'Main'
+            if (-not (Test-Path -LiteralPath $main)) { continue }
+            Add-Dir ((Get-ItemProperty -LiteralPath $main -ErrorAction SilentlyContinue).'Install Directory')
+        }
+        $cur = (Get-ItemProperty -LiteralPath $root -ErrorAction SilentlyContinue).CurrentVersion
+        if ($cur) {
+            $main = Join-Path $root ($cur + '\Main')
+            if (Test-Path -LiteralPath $main) {
+                Add-Dir ((Get-ItemProperty -LiteralPath $main -ErrorAction SilentlyContinue).'Install Directory')
+            }
+        }
+    }
+
+    Add-Dir (Join-Path $env:ProgramFiles 'Mozilla Firefox')
+    if (${env:ProgramFiles(x86)}) {
+        Add-Dir (Join-Path ${env:ProgramFiles(x86)} 'Mozilla Firefox')
+    }
+
+    $cmd = Get-Command firefox.exe -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) {
+        Add-Dir (Split-Path -Parent $cmd.Source)
+    }
+
+    if ($seen.Count -eq 0) {
+        throw 'Could not find firefox.exe. Pass -FirefoxInstallDir or use -SkipAutoconfig.'
+    }
+    return @($seen)
+}
+
+function Copy-AutoconfigPair {
+    param(
+        [string]$ConfigJs,
+        [string]$ConfigPrefs,
+        [string]$InstallDir
+    )
+    $dstPrefDir = Join-Path $InstallDir 'defaults\pref'
+    if (-not (Test-Path -LiteralPath $dstPrefDir)) {
+        New-Item -ItemType Directory -Path $dstPrefDir -Force | Out-Null
+    }
+    Copy-Item -LiteralPath $ConfigJs -Destination (Join-Path $InstallDir 'config.js') -Force
+    Copy-Item -LiteralPath $ConfigPrefs -Destination (Join-Path $dstPrefDir 'config-prefs.js') -Force
+}
+
+function Test-AccessDenied {
+    param($ErrorRecord)
+    $ex = $ErrorRecord.Exception
+    while ($ex) {
+        if ($ex -is [UnauthorizedAccessException]) { return $true }
+        if ($ex.Message -match 'Access is denied|UnauthorizedAccess') { return $true }
+        $ex = $ex.InnerException
+    }
+    return $false
+}
+
+function ConvertTo-PsSingleQuoted {
+    param([string]$Value)
+    "'" + ($Value -replace "'", "''") + "'"
+}
+
+function Install-FirefoxAutoconfig {
+    param(
+        [string]$HereDir,
+        [string[]]$InstallDirs
+    )
+    $configJs = Join-Path $HereDir 'autoconfig\config.js'
+    $configPrefs = Join-Path $HereDir 'autoconfig\defaults\pref\config-prefs.js'
+    if (-not (Test-Path -LiteralPath $configJs) -or -not (Test-Path -LiteralPath $configPrefs)) {
+        throw "Missing AutoConfig files under $HereDir\autoconfig"
+    }
+
+    $failed = New-Object System.Collections.Generic.List[string]
+    foreach ($dir in $InstallDirs) {
+        try {
+            Copy-AutoconfigPair -ConfigJs $configJs -ConfigPrefs $configPrefs -InstallDir $dir
+            Write-Host "AutoConfig Ctrl+J -> downloads panel: $dir"
+        } catch {
+            if (-not (Test-AccessDenied $_)) { throw }
+            [void]$failed.Add($dir)
+        }
+    }
+    if ($failed.Count -eq 0) {
+        return
+    }
+
+    Write-Host 'Need elevation to write Firefox AutoConfig next to firefox.exe...' -ForegroundColor Yellow
+    $quotedDirs = ($failed | ForEach-Object { ConvertTo-PsSingleQuoted $_ }) -join ', '
+    $script = @"
+`$ErrorActionPreference = 'Stop'
+`$configJs = $(ConvertTo-PsSingleQuoted $configJs)
+`$configPrefs = $(ConvertTo-PsSingleQuoted $configPrefs)
+foreach (`$dir in @($quotedDirs)) {
+    `$dstPrefDir = Join-Path `$dir 'defaults\pref'
+    New-Item -ItemType Directory -Path `$dstPrefDir -Force | Out-Null
+    Copy-Item -LiteralPath `$configJs -Destination (Join-Path `$dir 'config.js') -Force
+    Copy-Item -LiteralPath `$configPrefs -Destination (Join-Path `$dstPrefDir 'config-prefs.js') -Force
+}
+"@
+    $temp = Join-Path $env:TEMP ('firefox-autoconfig-' + [guid]::NewGuid().ToString('N') + '.ps1')
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($temp, $script, $utf8)
+    try {
+        $proc = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -ArgumentList @(
+            '-NoProfile'
+            '-ExecutionPolicy'
+            'Bypass'
+            '-File'
+            $temp
+        )
+        if (-not $proc -or $proc.ExitCode -ne 0) {
+            throw 'Failed to install Firefox AutoConfig. Re-run from an elevated PowerShell, or pass -SkipAutoconfig.'
+        }
+    } finally {
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($dir in $failed) {
+        if (-not (Test-Path -LiteralPath (Join-Path $dir 'config.js'))) {
+            throw "AutoConfig was not written to $dir"
+        }
+        Write-Host "AutoConfig Ctrl+J -> downloads panel: $dir"
+    }
+}
+
+function Clear-FirefoxStartupCache {
+    param([string]$ProfileDir)
+    $leaf = Split-Path -Leaf $ProfileDir
+    $localCache = Join-Path $env:LOCALAPPDATA "Mozilla\Firefox\Profiles\$leaf\startupCache"
+    if (-not (Test-Path -LiteralPath $localCache)) {
+        return
+    }
+    if (Test-Path -LiteralPath (Join-Path $ProfileDir 'parent.lock')) {
+        return
+    }
+    Remove-Item -LiteralPath $localCache -Recurse -Force
+    Write-Host 'Cleared Firefox startup cache'
+}
+
 function Set-ToggleShortcuts {
     param(
         [string]$ProfileDir,
@@ -343,10 +516,18 @@ foreach ($rel in $overlayFiles) {
 
 Install-HomepageWallpaper -HereDir $here -ProfileDir $profile
 Set-ToggleShortcuts -ProfileDir $profile -SpecPath (Join-Path $here 'toggle-shortcuts.json')
-if (Test-Path -LiteralPath (Join-Path $profile 'parent.lock')) {
-    Write-Host 'Firefox is running; quit fully and re-run this script if shortcuts revert.' -ForegroundColor Yellow
+
+if (-not $SkipAutoconfig) {
+    $installDirs = Get-FirefoxInstallDirs -Requested $FirefoxInstallDir
+    Install-FirefoxAutoconfig -HereDir $here -InstallDirs $installDirs
+    Clear-FirefoxStartupCache -ProfileDir $profile
+} else {
+    Write-Host 'Skipped AutoConfig (Ctrl+J still opens the Library window).'
 }
 
 Write-Host ''
-Write-Host 'Overlay applied. Fully quit Firefox and reopen so user.js, wallpaper, and shortcuts take effect.'
+Write-Host 'Overlay applied. Fully quit Firefox and reopen so user.js, wallpaper, shortcuts, and Ctrl+J take effect.'
+if (Test-Path -LiteralPath (Join-Path $profile 'parent.lock')) {
+    Write-Host 'Firefox is running; quit fully before the new Ctrl+J mapping can load. If it still opens a window, use about:support -> Clear startup cache.' -ForegroundColor Yellow
+}
 Write-Host 'Toggle style names still need Apply changes in the extension options; see notes.txt'
