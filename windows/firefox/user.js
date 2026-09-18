@@ -19,6 +19,7 @@ user_pref("layout.css.has-selector.enabled", true);
 
 // Keep the previous ShyFox new-tab wallpapers instead of Firefox's built-in ones
 user_pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", false);
+user_pref("uc.flex.newtab-background", true);
 
 // Urlbar extras kept from previous user.js
 user_pref("browser.urlbar.suggest.calculator", true);

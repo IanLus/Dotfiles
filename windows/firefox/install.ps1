@@ -18,10 +18,7 @@ $flexFoxSha256 = '0BF871B6D8FB7D3D93ADAF2C20D05910FCE8263B99623357157FA74ECCE83B
 $defaultProxy = 'http://127.0.0.1:7890'
 $overlayFiles = @(
     'user.js'
-    'chrome\content\uc-custom-content.css'
     'chrome\components\uc-user-settings.css'
-    'chrome\wallpaper.png'
-    'chrome\wallpaper-light.png'
 )
 
 $here = $PSScriptRoot
@@ -152,6 +149,106 @@ function Copy-OverlayFile {
     Write-Host "Copied $(Split-Path -Leaf $From)"
 }
 
+function Write-Utf8NoBom {
+    param(
+        [string]$Path,
+        [string]$Text
+    )
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Path, $Text, $utf8)
+}
+
+function Ensure-UserContentWallpaperImport {
+    param([string]$ProfileDir)
+    $path = Join-Path $ProfileDir 'chrome\userContent.css'
+    $importLine = '@import url(./content/uc-custom-content.css);'
+    if (-not (Test-Path -LiteralPath $path)) {
+        Write-Utf8NoBom -Path $path -Text ($importLine + "`n")
+        Write-Host 'Created chrome/userContent.css wallpaper import'
+        return
+    }
+    $text = [System.IO.File]::ReadAllText($path)
+    if ($text -match 'uc-custom-content\.css') {
+        Write-Host 'userContent.css already imports wallpaper CSS'
+        return
+    }
+    if ($text.Length -gt 0 -and -not $text.EndsWith("`n")) {
+        $text += "`n"
+    }
+    Write-Utf8NoBom -Path $path -Text ($text + $importLine + "`n")
+    Write-Host 'Added wallpaper import to userContent.css'
+}
+
+function Install-HomepageWallpaper {
+    param(
+        [string]$HereDir,
+        [string]$ProfileDir
+    )
+    $chrome = Join-Path $ProfileDir 'chrome'
+    if (-not (Test-Path -LiteralPath $chrome)) {
+        New-Item -ItemType Directory -Path $chrome -Force | Out-Null
+    }
+    Copy-OverlayFile -From (Join-Path $HereDir 'chrome\wallpaper.png') -To (Join-Path $chrome 'wallpaper.png')
+    Copy-OverlayFile -From (Join-Path $HereDir 'chrome\wallpaper-light.png') -To (Join-Path $chrome 'wallpaper-light.png')
+    # FlexFox uc.flex.newtab-background reads these names from chrome/
+    Copy-OverlayFile -From (Join-Path $HereDir 'chrome\wallpaper-light.png') -To (Join-Path $chrome 'background-0.png')
+    Copy-OverlayFile -From (Join-Path $HereDir 'chrome\wallpaper.png') -To (Join-Path $chrome 'background-1.png')
+    Copy-OverlayFile -From (Join-Path $HereDir 'chrome\content\uc-custom-content.css') -To (Join-Path $chrome 'content\uc-custom-content.css')
+    Ensure-UserContentWallpaperImport -ProfileDir $ProfileDir
+    Write-Host 'Homepage wallpaper enabled'
+}
+
+function Set-ToggleShortcuts {
+    param(
+        [string]$ProfileDir,
+        [string]$SpecPath
+    )
+    $spec = Get-Content -LiteralPath $SpecPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $settingsPath = Join-Path $ProfileDir 'extension-settings.json'
+    $now = [int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())
+    if (-not (Test-Path -LiteralPath $settingsPath)) {
+        Write-Utf8NoBom -Path $settingsPath -Text '{"version":3,"url_overrides":{},"prefs":{},"default_search":{},"commands":{},"homepageNotification":{},"tabHideNotification":{},"newTabNotification":{}}'
+    }
+    $raw = [System.IO.File]::ReadAllText($settingsPath)
+    foreach ($style in $spec.styles) {
+        if ([string]::IsNullOrWhiteSpace([string]$style.shortcut)) { continue }
+        $id = [string]$style.id
+        $shortcut = [string]$style.shortcut
+        $addonId = [string]$spec.addonId
+        $needle = '"{0}":{{"precedenceList":[{{"id":"{1}"' -f $id, $addonId
+        $idx = $raw.IndexOf($needle)
+        if ($idx -lt 0) {
+            $needle = '"' + $id + '":{"precedenceList":[{"id":"' + $addonId + '"'
+            $idx = $raw.IndexOf($needle)
+        }
+        if ($idx -ge 0) {
+            $tail = $raw.Substring($idx)
+            $m = [regex]::Match($tail, '"shortcut"\s*:\s*"[^"]*"')
+            if (-not $m.Success) {
+                throw "Found Toggle command $id but no shortcut field in $settingsPath"
+            }
+            $raw = $raw.Substring(0, $idx) + $tail.Substring(0, $m.Index) + ('"shortcut":"' + $shortcut + '"') + $tail.Substring($m.Index + $m.Length)
+            Write-Host "Shortcut $shortcut -> Toggle $id"
+            continue
+        }
+        $entry = '"{0}":{{"precedenceList":[{{"id":"{1}","installDate":{2},"value":{{"shortcut":"{3}"}},"enabled":true}}]}}' -f $id, $addonId, $now, $shortcut
+        if ($raw -match '"commands"\s*:\s*\{\s*\}') {
+            $raw = [regex]::Replace($raw, '"commands"\s*:\s*\{\s*\}', ('"commands":{' + $entry + '}'), 1)
+        } elseif ($raw -match '"commands"\s*:\s*\{') {
+            $raw = [regex]::Replace($raw, '"commands"\s*:\s*\{', ('"commands":{' + $entry + ','), 1)
+        } else {
+            $trimmed = $raw.TrimEnd()
+            if ($trimmed.EndsWith('}')) {
+                $raw = $trimmed.Substring(0, $trimmed.Length - 1) + ',"commands":{' + $entry + '}}'
+            } else {
+                throw "Cannot insert Toggle shortcuts into $settingsPath"
+            }
+        }
+        Write-Host "Shortcut $shortcut -> Toggle $id (inserted)"
+    }
+    Write-Utf8NoBom -Path $settingsPath -Text $raw
+}
+
 function Save-Url {
     param(
         [string]$Url,
@@ -244,6 +341,12 @@ foreach ($rel in $overlayFiles) {
     Copy-OverlayFile -From (Join-Path $here $rel) -To (Join-Path $profile $rel)
 }
 
+Install-HomepageWallpaper -HereDir $here -ProfileDir $profile
+Set-ToggleShortcuts -ProfileDir $profile -SpecPath (Join-Path $here 'toggle-shortcuts.json')
+if (Test-Path -LiteralPath (Join-Path $profile 'parent.lock')) {
+    Write-Host 'Firefox is running; quit fully and re-run this script if shortcuts revert.' -ForegroundColor Yellow
+}
+
 Write-Host ''
-Write-Host 'Overlay applied. Fully quit Firefox and reopen so user.js takes effect.'
-Write-Host 'Toggle shortcuts: see notes.txt and toggle-shortcuts.json'
+Write-Host 'Overlay applied. Fully quit Firefox and reopen so user.js, wallpaper, and shortcuts take effect.'
+Write-Host 'Toggle style names still need Apply changes in the extension options; see notes.txt'

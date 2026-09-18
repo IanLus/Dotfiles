@@ -10,11 +10,15 @@ Ctrl+Alt+E  锁定 Sidebery 展开（Lock Sidebery）
   pwsh -File windows/firefox/install.ps1 -InstallFlexFox
   pwsh -File windows/firefox/install.ps1 -InstallFlexFox -NoProxy
 
-Userchrome Toggle Extended：
+安装脚本会写入 Toggle 快捷键，并启用 chrome/wallpaper*.png 作为首页壁纸。
+
+Userchrome Toggle Extended 仍需在扩展选项里：
 - 勾选 Allow multiple styles to be active together
 - 启用 Style 1-4 和 Style 6，名称见 toggle-shortcuts.json
 - 点 Apply changes
 - 不要把 uc.flex.fully-hide-* / uc.flex.disable-sidebery-autohide 设为 true
 - 不要勾选 Firefox「悬停时展开侧栏」
+
+若 Firefox 正在运行，快捷键可能在退出时被覆盖，请完全退出后再跑一次脚本。
 
 不要提交整个 Firefox 配置目录、prefs.js、cookies、logins。

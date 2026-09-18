@@ -1,17 +1,37 @@
-/* Restore the previous ShyFox new-tab wallpapers. */
-@-moz-document url("about:home"), url("about:newtab") {
-  body {
+/* Homepage wallpaper from chrome/wallpaper.png (dark) and wallpaper-light.png. */
+@-moz-document url-prefix("about:home"), url-prefix("about:newtab") {
+  :root {
+    --newtab-background-color: transparent !important;
+  }
+
+  html,
+  body,
+  .activity-stream,
+  .outer-wrapper {
+    background-color: transparent !important;
     background-repeat: no-repeat !important;
     background-position: center !important;
     background-size: cover !important;
     background-attachment: fixed !important;
   }
 
-  :root[lwt-newtab-brighttext] body {
+  :root[lwt-newtab-brighttext] html,
+  :root[lwt-newtab-brighttext] body,
+  :root[lwt-newtab-brighttext] .activity-stream,
+  :root[lwt-newtab-brighttext] .outer-wrapper {
     background-image: url("../wallpaper.png") !important;
   }
 
-  :root:not([lwt-newtab-brighttext]) body {
+  :root:not([lwt-newtab-brighttext]) html,
+  :root:not([lwt-newtab-brighttext]) body,
+  :root:not([lwt-newtab-brighttext]) .activity-stream,
+  :root:not([lwt-newtab-brighttext]) .outer-wrapper {
     background-image: url("../wallpaper-light.png"), url("../wallpaper.png") !important;
+  }
+
+  .wallpaper,
+  .fixed-wallpaper,
+  [class*="wallpaper-container"] {
+    display: none !important;
   }
 }
