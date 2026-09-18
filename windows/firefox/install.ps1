@@ -44,26 +44,6 @@ function Get-InstallProxy {
     return $defaultProxy
 }
 
-function Read-IniFile {
-    param([string]$Path)
-    $sections = [ordered]@{}
-    $name = ''
-    foreach ($line in Get-Content -LiteralPath $Path) {
-        $trim = $line.Trim()
-        if ($trim -match '^\[(.+)\]$') {
-            $name = $Matches[1]
-            if (-not $sections.Contains($name)) {
-                $sections[$name] = @{}
-            }
-            continue
-        }
-        if ($name -and $trim -match '^(.*?)=(.*)$') {
-            $sections[$name][$Matches[1].Trim()] = $Matches[2].Trim()
-        }
-    }
-    return $sections
-}
-
 function Get-FirefoxProfilePath {
     param([string]$Requested)
     if (-not [string]::IsNullOrWhiteSpace($Requested)) {
@@ -79,36 +59,78 @@ function Get-FirefoxProfilePath {
         throw "Firefox profiles.ini not found: $iniPath"
     }
 
-    $ini = Read-IniFile -Path $iniPath
-    $relative = $null
-    $isRelative = $true
+    $installDefault = $null
+    $currentSection = $null
+    $entryPath = $null
+    $entryRelative = $true
+    $entryDefault = $false
+    $profiles = New-Object System.Collections.Generic.List[hashtable]
 
-    foreach ($section in $ini.Keys) {
-        if ($section -like 'Install*' -and $ini[$section]['Default']) {
-            $relative = $ini[$section]['Default']
-            break
+    foreach ($line in Get-Content -LiteralPath $iniPath) {
+        $trim = $line.Trim()
+        if ($trim -match '^\[(.+)\]$') {
+            if ($currentSection -like 'Profile*' -and $entryPath) {
+                [void]$profiles.Add(@{
+                    Path       = $entryPath
+                    IsRelative = $entryRelative
+                    Default    = $entryDefault
+                })
+            }
+            $currentSection = $Matches[1]
+            $entryPath = $null
+            $entryRelative = $true
+            $entryDefault = $false
+            continue
+        }
+        if ($trim -notmatch '^(.*?)=(.*)$') { continue }
+        $key = $Matches[1].Trim()
+        $value = $Matches[2].Trim()
+        if ($currentSection -like 'Install*' -and $key -eq 'Default') {
+            $installDefault = $value
+        }
+        if ($currentSection -like 'Profile*') {
+            if ($key -eq 'Path') { $entryPath = $value }
+            elseif ($key -eq 'IsRelative') { $entryRelative = $value -ne '0' }
+            elseif ($key -eq 'Default') { $entryDefault = $value -eq '1' }
         }
     }
-
-    foreach ($section in $ini.Keys) {
-        if ($section -notlike 'Profile*') { continue }
-        $profile = $ini[$section]
-        $matchesInstall = $relative -and (
-            ($profile['Path'] -replace '\\', '/') -ieq ($relative -replace '\\', '/')
-        )
-        $markedDefault = $profile['Default'] -eq '1'
-        if ($matchesInstall -or (-not $relative -and $markedDefault)) {
-            $relative = $profile['Path']
-            $isRelative = $profile['IsRelative'] -ne '0'
-            break
-        }
+    if ($currentSection -like 'Profile*' -and $entryPath) {
+        [void]$profiles.Add(@{
+            Path       = $entryPath
+            IsRelative = $entryRelative
+            Default    = $entryDefault
+        })
     }
 
-    if (-not $relative) {
+    $picked = $null
+    if ($installDefault) {
+        foreach ($item in $profiles) {
+            if (($item.Path -replace '\\', '/') -ieq ($installDefault -replace '\\', '/')) {
+                $picked = $item
+                break
+            }
+        }
+        if (-not $picked) {
+            $picked = @{ Path = $installDefault; IsRelative = $true }
+        }
+    }
+    if (-not $picked) {
+        foreach ($item in $profiles) {
+            if ($item.Default) {
+                $picked = $item
+                break
+            }
+        }
+    }
+    if (-not $picked -and $profiles.Count -gt 0) {
+        $picked = $profiles[0]
+    }
+    if (-not $picked -or [string]::IsNullOrWhiteSpace($picked.Path)) {
         throw 'Could not determine the Firefox profile path from profiles.ini.'
     }
 
-    if (-not $isRelative -or $relative -match '^[A-Za-z]:[\\/]' -or $relative.StartsWith('/')) {
+    $relative = $picked.Path
+    if ((-not $picked.IsRelative) -or $relative -match '^[A-Za-z]:[\\/]' -or $relative.StartsWith('/')) {
         return $relative
     }
     return Join-Path $firefoxRoot ($relative -replace '/', '\')
