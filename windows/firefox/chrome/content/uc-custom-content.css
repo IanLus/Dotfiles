@@ -1,0 +1,17 @@
+/* Restore the previous ShyFox new-tab wallpapers. */
+@-moz-document url("about:home"), url("about:newtab") {
+  body {
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+    background-size: cover !important;
+    background-attachment: fixed !important;
+  }
+
+  :root[lwt-newtab-brighttext] body {
+    background-image: url("../wallpaper.png") !important;
+  }
+
+  :root:not([lwt-newtab-brighttext]) body {
+    background-image: url("../wallpaper-light.png"), url("../wallpaper.png") !important;
+  }
+}

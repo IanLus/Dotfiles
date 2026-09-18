@@ -1,0 +1,20 @@
+FlexFox 本地层（不含上游 chrome/）
+
+Ctrl+Alt+A  隐藏/显示左侧 Sidebery（Hide Sidebery）
+Ctrl+Alt+W  隐藏/显示顶部工具栏（Hide Topbar）
+Ctrl+Alt+C  全部隐藏（Hide All）
+Ctrl+Alt+E  锁定 Sidebery 展开（Lock Sidebery）
+
+装回本机：
+  pwsh -File windows/firefox/install.ps1
+  pwsh -File windows/firefox/install.ps1 -InstallFlexFox
+  pwsh -File windows/firefox/install.ps1 -InstallFlexFox -NoProxy
+
+Userchrome Toggle Extended：
+- 勾选 Allow multiple styles to be active together
+- 启用 Style 1-4 和 Style 6，名称见 toggle-shortcuts.json
+- 点 Apply changes
+- 不要把 uc.flex.fully-hide-* / uc.flex.disable-sidebery-autohide 设为 true
+- 不要勾选 Firefox「悬停时展开侧栏」
+
+不要提交整个 Firefox 配置目录、prefs.js、cookies、logins。

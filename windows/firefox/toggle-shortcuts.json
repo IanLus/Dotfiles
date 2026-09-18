@@ -1,0 +1,11 @@
+{
+  "addonId": "userchrome-toggle-extended@n2ezr.ru",
+  "allowMultiple": true,
+  "styles": [
+    { "id": 1, "name": "Lock Sidebery", "shortcut": "Ctrl+Alt+E" },
+    { "id": 2, "name": "Hide Topbar", "shortcut": "Ctrl+Alt+W" },
+    { "id": 3, "name": "Hide Sidebery", "shortcut": "Ctrl+Alt+A" },
+    { "id": 4, "name": "Hide All", "shortcut": "Ctrl+Alt+C" },
+    { "id": 6, "name": "Solid Page" }
+  ]
+}
