@@ -78,7 +78,9 @@ zinit wait lucid light-mode as"completion" blockf for \
   has'dms' id-as'_dms' \
     $DOTDIR/completions/dms/_dms \
   has'niri' id-as'_niri' \
-    $DOTDIR/completions/niri/_niri
+    $DOTDIR/completions/niri/_niri \
+  has'claude' id-as'_claude' \
+    $DOTDIR/completions/claude/_claude
 
 zinit wait lucid light-mode for \
   blockf atinit"zicompinit; source $ZDOTDIR/zshrc.zsh" \
