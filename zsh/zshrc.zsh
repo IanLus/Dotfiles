@@ -138,6 +138,7 @@ fi
 [[ -f $XDG_CONFIG_HOME/cargo/env ]] && source $XDG_CONFIG_HOME/cargo/env
 [[ -f $HOME/.openclaw/completions/openclaw.zsh ]] && source $HOME/.openclaw/completions/openclaw.zsh
 [[ -f $DOTDIR/completions/hf/_hf ]] && source $DOTDIR/completions/hf/_hf
+[[ -f $DOTDIR/completions/claude/_claude ]] && source $DOTDIR/completions/claude/_claude
 
 # >>> conda initialize >>>
 [ -f /opt/miniforge/etc/profile.d/conda.sh ] && source /opt/miniforge/etc/profile.d/conda.sh
