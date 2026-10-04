@@ -3,6 +3,7 @@
 #   pwsh -File <dotfiles>\windows\firefox\install.ps1 -InstallFlexFox
 #
 # Ctrl+J is remapped by AutoConfig next to firefox.exe (needs a full quit/start).
+# Linux: bash <dotfiles>/linux/firefox/install.sh
 
 param(
     [string]$ProfilePath,

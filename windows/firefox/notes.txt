@@ -4,17 +4,26 @@ Ctrl+Alt+A  隐藏/显示左侧 Sidebery（Hide Sidebery）
 Ctrl+Alt+W  隐藏/显示顶部工具栏（Hide Topbar）
 Ctrl+Alt+C  全部隐藏（Hide All）
 Ctrl+Alt+E  锁定 Sidebery 展开（Lock Sidebery）
-Ctrl+J      打开工具栏下载悬浮面板（与下载按钮一致，不再弹出 Library 窗口）
+Ctrl+J        Windows：打开工具栏下载悬浮面板（与下载按钮一致，不再弹出 Library 窗口）
+Ctrl+Shift+Y  Linux 官方构建：同上。Ctrl+J 仍是聚焦搜索栏
 
-装回本机：
+装回本机（Windows）：
   pwsh -File windows/firefox/install.ps1
   pwsh -File windows/firefox/install.ps1 -InstallFlexFox
   pwsh -File windows/firefox/install.ps1 -InstallFlexFox -NoProxy
 
-安装脚本会写入 Toggle 快捷键，启用 chrome/wallpaper*.png 作为首页壁纸，并把 AutoConfig 写到 firefox.exe 旁边，让 Ctrl+J 打开下载悬浮面板。Firefox 升级后若快捷键失效，再跑一次本脚本。
+装回本机（Linux，复用 windows/firefox 里的同一套文件）：
+  bash linux/firefox/install.sh
+  bash linux/firefox/install.sh --install-flexfox
+  bash linux/firefox/install.sh --install-flexfox --no-proxy
+
+安装脚本会写入 Toggle 快捷键，启用 chrome/wallpaper*.png 作为首页壁纸，并把 AutoConfig 写到 Firefox 程序目录，让下载快捷键打开悬浮面板。Firefox 升级后若快捷键失效，再跑一次本脚本。
+
+Windows 上 AutoConfig 写到 firefox.exe 旁边。Linux 上写到 firefox 二进制所在目录（常见 /usr/lib/firefox），系统目录需要 sudo。Snap / Flatpak 的程序目录是只读的，映射装不进去。
 
 跳过 AutoConfig：
   pwsh -File windows/firefox/install.ps1 -SkipAutoconfig
+  bash linux/firefox/install.sh --skip-autoconfig
 
 Userchrome Toggle Extended 仍需在扩展选项里：
 - 勾选 Allow multiple styles to be active together
