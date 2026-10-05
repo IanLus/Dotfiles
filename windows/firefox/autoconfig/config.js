@@ -9,34 +9,53 @@ try {
         return;
       }
       const commands = win.BrowserCommands;
-      if (!commands || typeof commands.downloadsUI !== "function") {
-        return;
-      }
-      if (commands._dotfilesDownloadsPanel) {
-        return;
+      if (commands && typeof commands.downloadsUI === "function" && !commands._dotfilesDownloadsPanel) {
+        const original = commands.downloadsUI.bind(commands);
+        commands.downloadsUI = function downloadsUI() {
+          try {
+            const panel = win.DownloadsPanel;
+            if (!panel || typeof panel.showPanel !== "function") {
+              original();
+              return;
+            }
+            const showing =
+              panel.isPanelShowing ||
+              (panel.panel && panel.panel.state && panel.panel.state !== "closed");
+            if (showing) {
+              panel.hidePanel();
+              return;
+            }
+            panel.showPanel(true, true);
+          } catch (ex) {
+            original();
+          }
+        };
+        commands._dotfilesDownloadsPanel = true;
       }
 
-      const original = commands.downloadsUI.bind(commands);
-      commands.downloadsUI = function downloadsUI() {
-        try {
-          const panel = win.DownloadsPanel;
-          if (!panel || typeof panel.showPanel !== "function") {
-            original();
-            return;
+      // Linux binds downloads to Ctrl+Shift+Y and uses Ctrl+J for the legacy
+      // search bar. Point Ctrl+J at the same downloads command as Windows.
+      if (Services.appinfo.OS === "Linux") {
+        const doc = win.document;
+        if (doc && !doc._dotfilesDownloadsCtrlJ) {
+          const search = doc.getElementById("key_search2");
+          if (search) {
+            search.removeAttribute("data-l10n-id");
+            search.removeAttribute("key");
+            search.removeAttribute("keycode");
+            search.removeAttribute("modifiers");
+            search.removeAttribute("command");
           }
-          const showing =
-            panel.isPanelShowing ||
-            (panel.panel && panel.panel.state && panel.panel.state !== "closed");
-          if (showing) {
-            panel.hidePanel();
-            return;
+          const downloads = doc.getElementById("key_openDownloads");
+          if (downloads) {
+            downloads.removeAttribute("data-l10n-id");
+            downloads.removeAttribute("keycode");
+            downloads.setAttribute("modifiers", "accel");
+            downloads.setAttribute("key", "J");
           }
-          panel.showPanel(true, true);
-        } catch (ex) {
-          original();
+          doc._dotfilesDownloadsCtrlJ = true;
         }
-      };
-      commands._dotfilesDownloadsPanel = true;
+      }
     } catch (ex) {}
   }
 

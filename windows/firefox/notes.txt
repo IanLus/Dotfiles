@@ -4,8 +4,8 @@ Ctrl+Alt+A  隐藏/显示左侧 Sidebery（Hide Sidebery）
 Ctrl+Alt+W  隐藏/显示顶部工具栏（Hide Topbar）
 Ctrl+Alt+C  全部隐藏（Hide All）
 Ctrl+Alt+E  锁定 Sidebery 展开（Lock Sidebery）
-Ctrl+J        Windows：打开工具栏下载悬浮面板（与下载按钮一致，不再弹出 Library 窗口）
-Ctrl+Shift+Y  Linux 官方构建：同上。Ctrl+J 仍是聚焦搜索栏
+Ctrl+J        打开工具栏下载悬浮面板（与下载按钮一致，不再弹出 Library 窗口）
+Ctrl+K        Linux：聚焦地址栏。原来的 Ctrl+J 搜索快捷键已让给下载
 
 装回本机（Windows）：
   pwsh -File windows/firefox/install.ps1

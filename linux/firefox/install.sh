@@ -5,8 +5,8 @@
 #   bash linux/firefox/install.sh --install-flexfox --no-proxy
 #
 # The downloads command is remapped by AutoConfig next to the firefox binary
-# (needs a full quit/start, and sudo for a system install). On many Linux
-# builds that shortcut is Ctrl+Shift+Y; Ctrl+J still focuses the search bar.
+# (needs a full quit/start, and sudo for a system install). On Linux, Ctrl+J
+# is taken from the legacy search bar and opens the downloads panel.
 # Keep FlexFox version/hash in sync with windows/firefox/install.ps1.
 
 set -euo pipefail
@@ -283,21 +283,26 @@ profile_is_running() {
 }
 
 startup_cache_dir() {
-  local profile=$1 leaf base
+  local profile=$1 leaf cache_home candidate
   leaf=$(basename "$profile")
+  cache_home=${XDG_CACHE_HOME:-$HOME/.cache}
   case $profile in
     */.var/app/org.mozilla.firefox/.mozilla/firefox/*)
-      base=${profile%/.mozilla/firefox/*}
-      printf '%s\n' "$base/cache/mozilla/firefox/$leaf/startupCache"
-      ;;
-    */.mozilla/firefox/*)
-      base=${profile%/.mozilla/firefox/*}
-      printf '%s\n' "$base/.cache/mozilla/firefox/$leaf/startupCache"
-      ;;
-    *)
-      printf '%s\n' "$HOME/.cache/mozilla/firefox/$leaf/startupCache"
+      printf '%s\n' "${profile%/.mozilla/firefox/*}/cache/mozilla/firefox/$leaf/startupCache"
+      return 0
       ;;
   esac
+  # Firefox 147+ follows XDG and no longer creates ~/.mozilla or ~/.cache/mozilla.
+  for candidate in \
+    "$cache_home/mozilla/firefox/$leaf/startupCache" \
+    "$HOME/.cache/mozilla/firefox/$leaf/startupCache"
+  do
+    if [[ -d $candidate ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  printf '%s\n' "$cache_home/mozilla/firefox/$leaf/startupCache"
 }
 
 clear_startup_cache() {
@@ -326,6 +331,7 @@ read_profile_from_ini() {
   local root current='' path='' relative=1 default_flag=0 install_default=''
   local -a prof_paths=() prof_rel=() prof_def=()
   local line key value i picked=-1 norm
+  [[ -n $ini && -f $ini ]] || die "Firefox profiles.ini not found: ${ini:-<empty>}"
   root=$(dirname "$ini")
 
   while IFS= read -r line || [[ -n $line ]]; do
@@ -400,15 +406,20 @@ read_profile_from_ini() {
 choose_profiles_ini() {
   local -a found=()
   local candidate prefer='' kind='' pid exe chosen=''
+  local xdg_config=${XDG_CONFIG_HOME:-$HOME/.config}
+  # Firefox 147+ uses $XDG_CONFIG_HOME/mozilla/firefox. ~/.mozilla is the legacy path.
   for candidate in \
+    "$xdg_config/mozilla/firefox/profiles.ini" \
     "$HOME/.mozilla/firefox/profiles.ini" \
+    "$HOME/snap/firefox/common/.config/mozilla/firefox/profiles.ini" \
     "$HOME/snap/firefox/common/.mozilla/firefox/profiles.ini" \
+    "$HOME/.var/app/org.mozilla.firefox/.config/mozilla/firefox/profiles.ini" \
     "$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox/profiles.ini"
   do
     [[ -f $candidate ]] && found+=("$candidate")
   done
   if ((${#found[@]} == 0)); then
-    die "Firefox profiles.ini not found. Looked under ~/.mozilla, snap, and flatpak."
+    die "Firefox profiles.ini not found. Looked under \$XDG_CONFIG_HOME/mozilla, ~/.mozilla, snap, and flatpak."
   fi
   if ((${#found[@]} == 1)); then
     printf '%s\n' "${found[0]}"
@@ -427,9 +438,18 @@ choose_profiles_ini() {
   done < <(ps -eo pid,comm 2>/dev/null | awk '$2=="firefox" || $2=="firefox-bin" || $2=="firefox-esr" {print $1}')
 
   case $kind in
-    snap) prefer="$HOME/snap/firefox/common/.mozilla/firefox/profiles.ini" ;;
-    flatpak) prefer="$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox/profiles.ini" ;;
-    *) prefer="$HOME/.mozilla/firefox/profiles.ini" ;;
+    snap)
+      prefer="$HOME/snap/firefox/common/.config/mozilla/firefox/profiles.ini"
+      [[ -f $prefer ]] || prefer="$HOME/snap/firefox/common/.mozilla/firefox/profiles.ini"
+      ;;
+    flatpak)
+      prefer="$HOME/.var/app/org.mozilla.firefox/.config/mozilla/firefox/profiles.ini"
+      [[ -f $prefer ]] || prefer="$HOME/.var/app/org.mozilla.firefox/.mozilla/firefox/profiles.ini"
+      ;;
+    *)
+      prefer="$xdg_config/mozilla/firefox/profiles.ini"
+      [[ -f $prefer ]] || prefer="$HOME/.mozilla/firefox/profiles.ini"
+      ;;
   esac
   for candidate in "${found[@]}"; do
     if [[ $candidate == "$prefer" ]]; then
@@ -449,7 +469,7 @@ get_profile_path() {
     realpath "$requested"
     return 0
   fi
-  ini=$(choose_profiles_ini)
+  ini=$(choose_profiles_ini) || exit 1
   read_profile_from_ini "$ini"
 }
 
@@ -653,8 +673,8 @@ done
 
 [[ -f $src/user.js ]] || die "Firefox overlay not found: $src"
 
-profile=$(get_profile_path "$profile_path")
-[[ -d $profile ]] || die "Firefox profile not found: $profile"
+profile=$(get_profile_path "$profile_path") || exit 1
+[[ -n $profile && -d $profile ]] || die "Firefox profile not found: ${profile:-<empty>}"
 printf 'Firefox profile: %s\n' "$profile"
 if profile_is_running "$profile"; then
   warn 'Firefox looks running (.parentlock). CSS can still be copied; user.js applies on the next full quit/start.'
@@ -697,7 +717,7 @@ if profile_is_running "$profile"; then
   warn 'Firefox is running; quit fully before the downloads shortcut can open the panel. If it still opens a window, use about:support -> Clear startup cache.'
 fi
 printf 'Toggle style names still need Apply changes in the extension options; see windows/firefox/notes.txt\n'
-printf 'On many Linux builds the downloads shortcut is Ctrl+Shift+Y, not Ctrl+J.\n'
+printf 'On Linux, Ctrl+J opens the downloads panel. Ctrl+K still focuses the address bar.\n'
 if ((autoconfig_ok == 0)); then
   exit 1
 fi
