@@ -30,6 +30,8 @@ fcitx5/rime/lua/debuger.lua
 fcitx5/rime/lua/is_in_user_dict.lua
 # 与 /usr/share/rime-data/lua 相同，安装雾凇后即可用
 fcitx5/rime/lua/autocap_filter.lua
+fcitx5/rime/lua/calc_translator.lua
+fcitx5/rime/lua/v_filter.lua
 fcitx5/rime/lua/cn_en_spacer.lua
 fcitx5/rime/lua/convert_ar_num_to_zh.lua
 fcitx5/rime/lua/corrector.lua
