@@ -4,8 +4,30 @@ mime=$(file -bL --mime-type "$1")
 category=${mime%%/*}
 kind=${mime##*/}
 file=${1/#\~\//$HOME/}
+
+preview_text() {
+  local target=$1
+  local center=${2:-0}
+  if command -v batcat >/dev/null 2>&1; then
+    batcat --style="${BAT_STYLE:-numbers}" --color=always --pager=never --highlight-line="${center:-0}" -- "$target" && return 0
+  elif command -v bat >/dev/null 2>&1; then
+    bat --style="${BAT_STYLE:-numbers}" --color=always --pager=never --highlight-line="${center:-0}" -- "$target" && return 0
+  fi
+  cat -- "$target"
+}
+
+preview_yq() {
+  command -v yq >/dev/null 2>&1 || return 1
+  # mikefarah yq 用 -C；旧版 python-yq 用 eval --color-output。
+  yq -C '.' "$1" 2>/dev/null || yq eval --color-output '.' "$1"
+}
+
 if [ -d "$file" ]; then
-  eza --git -ahl --color=always --icons=always "$file"
+  if command -v eza >/dev/null 2>&1; then
+    eza --git -ahl --color=always --icons=always "$file"
+  else
+    ls -la --color=always "$file" 2>/dev/null || ls -la "$file"
+  fi
 elif [ "$category" = image ]; then
   dim=${FZF_PREVIEW_COLUMNS}x${FZF_PREVIEW_LINES}
   if [[ $dim == x ]]; then
@@ -47,8 +69,18 @@ elif [ "$category" = image ]; then
 
 elif [ "$kind" = vnd.openxmlformats-officedocument.spreadsheetml.sheet ] ||
   [ "$kind" = vnd.ms-excel ]; then
-  in2csv "$file" | xsv table | bat -n -ltsv --color=always
-elif [[ "$category" = "text" || "$kind" == "javascript" ]]; then
+  if command -v in2csv >/dev/null 2>&1 && command -v xsv >/dev/null 2>&1; then
+    if command -v batcat >/dev/null 2>&1; then
+      in2csv "$file" | xsv table | batcat -n -l tsv --color=always --pager=never
+    elif command -v bat >/dev/null 2>&1; then
+      in2csv "$file" | xsv table | bat -n -l tsv --color=always --pager=never
+    else
+      in2csv "$file" | xsv table
+    fi
+  else
+    preview_text "$file"
+  fi
+else
   center=0
   if [[ ! -r $file ]]; then
     if [[ $file =~ ^(.+):([0-9]+)\ *$ ]] && [[ -r ${BASH_REMATCH[1]} ]]; then
@@ -59,18 +91,35 @@ elif [[ "$category" = "text" || "$kind" == "javascript" ]]; then
       center=${BASH_REMATCH[2]}
     fi
   fi
-  # Sometimes bat is installed as batcat.
-  if command -v batcat >/dev/null; then
-    batname="batcat"
-  elif command -v bat >/dev/null; then
-    batname="bat"
-  fi
-  ${batname} --style="${BAT_STYLE:-numbers}" --color=always --pager=never --highlight-line="${center:-0}" -- "$file"
 
-elif [[ "$kind" == "json" ]]; then
-  jq --color-output . "$file"
-  # bat -n --color=always "$file"
-else
-  lesspipe.sh "$file"
+  ext=${file##*.}
+  ext=${ext,,}
+  doc=$kind
+  case "$ext" in
+  json) doc=json ;;
+  yml | yaml) doc=yaml ;;
+  esac
+
+  # JSON / YAML 也是文本。能格式化就格式化，否则和普通文本一样走 bat，没有 bat 就 cat。
+  if [[ "$doc" == json || "$kind" == json ]]; then
+    if command -v jq >/dev/null 2>&1 && jq --color-output . "$file"; then
+      :
+    elif preview_yq "$file"; then
+      :
+    else
+      preview_text "$file" "$center"
+    fi
+  elif [[ "$doc" == yaml || "$kind" == yaml || "$kind" == x-yaml || "$kind" == x-yml ]]; then
+    if preview_yq "$file"; then
+      :
+    else
+      preview_text "$file" "$center"
+    fi
+  elif [[ "$category" == text || "$kind" == javascript ]]; then
+    preview_text "$file" "$center"
+  elif command -v lesspipe.sh >/dev/null 2>&1; then
+    lesspipe.sh "$file"
+  else
+    preview_text "$file" "$center"
+  fi
 fi
-# lesspipe.sh don't use eza, bat and chafa, it use ls and exiftool. so we create a lessfilter.
