@@ -1,0 +1,20 @@
+# Rime schema
+# encoding: utf-8
+
+schema:
+  schema_id: chaizi_uv
+  name: 拆分
+  version: "1"
+
+engine:
+  processors:
+    - speller
+    - express_editor
+  segmentors:
+    - abc_segmentor
+  translators:
+    - table_translator
+
+translator:
+  dictionary: chaizi_uv
+  enable_user_dict: false

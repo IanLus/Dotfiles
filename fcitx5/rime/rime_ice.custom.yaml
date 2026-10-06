@@ -1,0 +1,17 @@
+# encoding: utf-8
+# 全拼：默认简体。u 笔画/拆分/符号，v 数字/公式。
+patch:
+  "switches/@2/reset": 0
+  radical_lookup/prefix: "u"
+  radical_lookup/tips: "〔偏旁〕"
+  # 纯笔画 hspnzd 走 stroke，其余 u+字母仍是偏旁/拆分
+  recognizer/patterns/stroke: "^u[hspnzd]+$"
+  recognizer/patterns/radical_lookup: "^u(?![hspnzd]+$)[a-z]+$"
+  "engine/segmentors/@before 3": affix_segmentor@stroke_lookup
+  stroke_lookup/tag: stroke
+  stroke_lookup/enable_completion: true
+  chaizi_lookup/tag: radical_lookup
+  recognizer/patterns/punct: "^uu[a-z0-9]+$"
+  recognizer/patterns/number: "^v[0-9]+[.]?[0-9]*"
+  recognizer/patterns/calculator: "^v[0-9].*"
+  calculator/prefix: "v"

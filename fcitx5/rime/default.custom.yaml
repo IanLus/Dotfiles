@@ -1,0 +1,4 @@
+# 雾凇拼音用户补丁
+# 翻页键、每页个数、简繁快捷键写在 default.yaml
+patch:
+  menu/page_size: 7
