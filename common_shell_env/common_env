@@ -92,5 +92,7 @@ export COREPACK_HOME="$XDG_CACHE_HOME/node/corepack"
 
 ## 输入法
 export XMODIFIERS=@im=fcitx
-export QT_IM_MODULE=fcitx
+# export QT_IM_MODULE=fcitx
 export SDL_IM_MODULE=fcitx
+export GLFW_IM_MODULE=ibus
+export FCITX_CONFIG_HOME=$DOTDIR/fcitx5
