@@ -1,13 +1,14 @@
 #language slang 2026
-// Neovide-style cursor trail with a canvas shadowBlur halo.
-// The animated quad comes from kitty's cursor_trail_corners.
-// shadowBlur matches vscode-neovide-cursor: blur radius 10px,
-// shadow color equal to the cursor color (#00d7ff via cursor_trail_color).
+// Sharp cursor trail with a thin same-color halo.
+// The quad stays a hard shape. Glow only tints pixels outside it,
+// matching the juejin demo: a concrete cursor, with the color glowing.
 
 import kitty_custom_shader_types;
 
-// Canvas shadowBlur. Chromium uses sigma = shadowBlur / 2.
-static const float SHADOW_BLUR = 10.0;
+// How far the tint stays visible, in pixels. Kept small so the silhouette stays crisp.
+static const float GLOW_SIGMA = 2.4;
+// Peak strength of the halo just outside the edge. The shape itself is fully opaque.
+static const float GLOW_STRENGTH = 0.45;
 
 float
 dist_to_segment(float2 p, float2 a, float2 b) {
@@ -44,8 +45,7 @@ sd_quad(float2 p, float2 c0, float2 c1, float2 c2, float2 c3) {
 
 public float4
 fragment_main(float4 color, KittyTextures t, KittyCustomShaderData d) {
-    float opacity = d.cursor_trail_color.a;
-    if (opacity <= 0.0) return color;
+    if (d.cursor_trail_color.a <= 0.0) return color;
 
     float2 pixel_dims = float2(d.viewport_size_pixels) * t.viewport.zw;
     float2 px = t.pos * pixel_dims;
@@ -56,21 +56,20 @@ fragment_main(float4 color, KittyTextures t, KittyCustomShaderData d) {
     float2 c3 = float2(d.cursor_trail_corners_x.w, d.cursor_trail_corners_y.w) * pixel_dims;
 
     float sdf = sd_quad(px, c0, c1, c2, c3);
+    // Hard silhouette, about one pixel of antialiasing.
+    float fill = 1.0 - smoothstep(0.0, 1.0, sdf);
     float outside = max(sdf, 0.0);
-    float sigma = SHADOW_BLUR * 0.5;
-    // Filled cursor shape, plus the gaussian shadow that canvas draws behind it.
-    float fill = 1.0 - smoothstep(-1.0, 1.0, sdf);
-    float shadow = exp(-(outside * outside) / (2.0 * sigma * sigma));
-    float coverage = max(fill, shadow) * opacity;
-    if (coverage <= 0.01) return color;
+    float glow = exp(-(outside * outside) / (2.0 * GLOW_SIGMA * GLOW_SIGMA)) * GLOW_STRENGTH;
+    glow *= 1.0 - fill;
 
-    // Keep the real cursor cell clean. The halo still wraps its edges.
     float2 uv = t.pos;
     float inside_cursor =
         step(d.cursor_trail_edge.x, uv.x) * step(uv.x, d.cursor_trail_edge.y) *
         step(d.cursor_trail_edge.w, uv.y) * step(uv.y, d.cursor_trail_edge.z);
-    coverage *= 1.0 - inside_cursor;
-    if (coverage <= 0.01) return color;
+    fill *= 1.0 - inside_cursor;
 
-    return float4(lerp(color.rgb, d.cursor_trail_color.rgb, coverage), color.a);
+    float amount = max(fill, glow);
+    if (amount <= 0.01) return color;
+
+    return float4(lerp(color.rgb, d.cursor_trail_color.rgb, amount), color.a);
 }
