@@ -38,8 +38,26 @@ elif [ "$category" = image ]; then
     dim=${FZF_PREVIEW_COLUMNS}x$((FZF_PREVIEW_LINES - 1))
   fi
 
+  # fzf 预览把输出接走，tmux 又不回答像素查询。用格子像素和 passthrough，
+  # 让 icat 发出 unicode placeholder，由 kitty 在预览区把图画出来。
+  if [[ -n ${TMUX-} ]] && command -v kitten >/dev/null; then
+    cols=${FZF_PREVIEW_COLUMNS:-80}
+    rows=${FZF_PREVIEW_LINES:-24}
+    if ((rows > 1)); then
+      rows=$((rows - 1))
+    fi
+    cell=$(tmux display-message -p '#{client_cell_width}x#{client_cell_height}' 2>/dev/null || true)
+    cw=${cell%%x*}
+    ch=${cell##*x}
+    if [[ ! ${cw:-} =~ ^[1-9][0-9]*$ || ! ${ch:-} =~ ^[1-9][0-9]*$ ]]; then
+      cw=10
+      ch=20
+    fi
+    kitten icat --passthrough=tmux --stdin=no --transfer-mode=stream \
+      --use-window-size "${cols},${rows},$((cols * cw)),$((rows * ch))" \
+      --place="${cols}x${rows}@0x0" "$file" || true
   # 1. Use icat (from Kitty) if kitten is installed
-  if [[ $KITTY_WINDOW_ID ]] || [[ $GHOSTTY_RESOURCES_DIR ]] && command -v kitten >/dev/null; then
+  elif { [[ $KITTY_WINDOW_ID ]] || [[ $GHOSTTY_RESOURCES_DIR ]]; } && command -v kitten >/dev/null; then
     # 1. 'memory' is the fastest option but if you want the image to be scrollable,
     #    you have to use 'stream'.
     #
