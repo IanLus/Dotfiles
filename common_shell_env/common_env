@@ -35,14 +35,14 @@ export SVN_CONFIG_DIR="$XDG_CONFIG_HOME/subversion"
 export TZ="Asia/Shanghai"
 
 ## fzf相关配置
-# tmux popup-border-lines 已是 none，这里补 fzf 圆角，避免 --tmux 默认方框
+# tmux 3.7 里指定 --border 会走 popup，图像预览进不去。只留 --tmux，用浮动窗格。
 export FZF_DEFAULT_OPTS="
   --height 80% -e --ansi --reverse
   --color=border:#cceeff
   --walker-skip .git,node_modules,target
   --bind 'ctrl-f:preview-page-down,ctrl-b:preview-page-up'"
 if [[ -n $TMUX ]]; then
-  FZF_DEFAULT_OPTS+=" --tmux center,80% --border=rounded"
+  FZF_DEFAULT_OPTS+=" --tmux center,80%"
 else
   FZF_DEFAULT_OPTS+=" --border=rounded"
 fi
