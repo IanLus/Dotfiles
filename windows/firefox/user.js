@@ -29,4 +29,7 @@ user_pref("browser.urlbar.trimURLs", true);
 
 // GTK extras kept from previous user.js
 user_pref("widget.gtk.rounded-bottom-corners.enabled", true);
-user_pref("widget.gtk.ignore-bogus-leave-notify", 1);
+// 0: honor window leave events. 1 drops a leave that still reports the
+// pointer inside the window. On niri that happens when the cursor slowly
+// exits the left edge, so the vertical tab bar stays expanded.
+user_pref("widget.gtk.ignore-bogus-leave-notify", 0);
