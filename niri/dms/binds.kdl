@@ -6,6 +6,7 @@ binds {
 
     // === Application Launchers ===
     Mod+Slash hotkey-overlay-title="Open Terminal" { spawn "kitty"; }
+    Mod+Backslash { spawn "kitty" "--class" "floating-kitty"; }
     Alt+Semicolon hotkey-overlay-title="Application Launcher" {
         spawn "dms" "ipc" "call" "spotlight" "toggle";
     }

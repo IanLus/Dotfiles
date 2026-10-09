@@ -278,6 +278,13 @@ recent-windows {
         Alt+Shift+grave { previous-window filter="app-id"; }
     }
 }
+window-rule {
+    match app-id="floating-kitty"
+    open-floating true
+    default-column-width { fixed 800; }
+    default-window-height { fixed 500; }
+    default-floating-position x=560 y=330
+}
 
 // Include dms files
 include optional=true "dms/colors.kdl"
