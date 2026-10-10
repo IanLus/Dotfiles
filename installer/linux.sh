@@ -18,6 +18,10 @@ fi
 if command -v ranger >/dev/null; then
   ln -sf "$DOTDIR/ranger" "$CONFIG_DIR"
 fi
+if command -v kitty >/dev/null; then
+  mkdir -p "$CONFIG_DIR/xfce4"
+  ln -sfn "$DOTDIR/xfce4/helpers.rc" "$CONFIG_DIR/xfce4/helpers.rc"
+fi
 DATA_HOME="${XDG_DATA_HOME:-$CONFIG_DIR/local}"
 mkdir -p "$DATA_HOME/dbus-1/services"
 ln -sfn "$DOTDIR/xdg-data/dbus-1/services/org.freedesktop.FileManager1.service" \
