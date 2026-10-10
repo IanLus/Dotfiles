@@ -34,15 +34,15 @@ zinit wait lucid light-mode for \
   atclone"sed -i '105,108s/\\\e\\\e/\\^o/g' sudo.plugin.zsh" \
   nocompile"!" atpull"%atclone" \
     OMZP::sudo/sudo.plugin.zsh \
-  atclone"mkdir -p ~/.config/ranger/plugins;mv ranger_zlua.py ~/.config/ranger/plugins/" \
-  atload"export RANGER_ZLUA='$ZINIT[PLUGINS_DIR]/skywind3000---z.lua/z.lua'" \
+  atclone"command -v ranger >/dev/null && mkdir -p ~/.config/ranger/plugins && mv ranger_zlua.py ~/.config/ranger/plugins/" \
+  atload"command -v ranger >/dev/null && export RANGER_ZLUA='$ZINIT[PLUGINS_DIR]/skywind3000---z.lua/z.lua'" \
   atpull'!git reset --hard' \
     skywind3000/z.lua \
   hlissner/zsh-autopair
 
 # install manual and scripts
 zinit wait lucid as"null" light-mode for \
-  atclone"chmod a+x fzf-preview.sh;mkdir -p $ZPFX/bin;mv fzf-preview.sh $ZPFX/bin/" atpull"%atclone" id-as"fzf-preview.sh" \
+  atclone"chmod a+x fzf-preview.sh && mkdir -p $ZPFX/bin && mv fzf-preview.sh $ZPFX/bin/" atpull"%atclone" id-as"fzf-preview.sh" \
     https://fastly.jsdelivr.net/gh/junegunn/fzf/bin/fzf-preview.sh
 
 # completions
