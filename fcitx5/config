@@ -50,15 +50,15 @@
 # [Hotkey/TogglePreedit]
 # 0=Control+Alt+P
 
-# [Behavior]
+[Behavior]
 # 默认激活输入法
 # ActiveByDefault=False
 # 重新聚焦时重置状态
 # resetStateWhenFocusIn=No
 # 共享输入状态
 # ShareInputState=No
-# 在程序中显示预编辑文本
-# PreeditEnabledByDefault=True
+# 在程序中显示预编辑文本。关掉后拼音显示在候选框上方，而不是嵌在输入控件里。
+PreeditEnabledByDefault=False
 # 切换输入法时显示输入法信息
 # ShowInputMethodInformation=True
 # 在焦点更改时显示输入法信息
