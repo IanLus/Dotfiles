@@ -41,7 +41,7 @@ if has_dirx then
 	set_default("FZF_ALT_C_COMMAND", "fzf-list-dirs.cmd $dir")
 end
 
--- Alt+C stays reverse-only; do not copy common_env's tree preview.
+-- Alt+C stays reverse-only; do not copy zsh/env.zsh's tree preview.
 local fzf_file_opts = table.concat({
 	"--layout=reverse",
 	'--preview "fzf-preview.cmd {}"',

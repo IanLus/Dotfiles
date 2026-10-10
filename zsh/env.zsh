@@ -1,5 +1,5 @@
 #!/hint/zsh
-# 本文件在 $DOTDIR/common_shell_env/；%x 是正在 source 的路径，免掉每次 git
+# 由 /etc/zsh/zshenv 引入。本文件在 $DOTDIR/zsh/，用 %x 推出 DOTDIR。
 export DOTDIR="${${(%):-%x}:A:h:h}"
 export XDG_CONFIG_HOME="$HOME/.config"
 export XDG_DATA_HOME="$XDG_CONFIG_HOME/local"

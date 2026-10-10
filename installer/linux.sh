@@ -7,8 +7,16 @@ elif ! command -v git >/dev/null; then
 fi
 CONFIG_DIR="${XDG_CONFIG_HOME:-~/.config}"
 DOTDIR="$CONFIG_DIR/dotfiles"
-git clone https://github.com/wit-l/dotfiles "$DOTDIR"
-echo "source $DOTDIR/common_shell_env/common_env" >>/etc/zsh/zshenv
+if [[ -e "$DOTDIR" && ! -d "$DOTDIR/.git" ]]; then
+  echo "$DOTDIR exists but is not a git checkout" >&2
+  exit 1
+elif [[ ! -d "$DOTDIR/.git" ]]; then
+  git clone https://github.com/wit-l/dotfiles "$DOTDIR"
+fi
+env_file="$DOTDIR/zsh/env.zsh"
+if ! grep -qF "$env_file" /etc/zsh/zshenv; then
+  echo "source $env_file" >>/etc/zsh/zshenv
+fi
 ln -sf "$DOTDIR/git/gitconfig" ~/.gitconfig
 if [[ ! -d ~/.ssh ]]; then mkdir ~/.ssh; fi
 ln -sf "$DOTDIR/ssh/config" ~/.ssh

@@ -67,6 +67,63 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+# 文本预览：有 bat 就带行号高亮，否则 cat。
+preview_text() {
+  if command -v bat >/dev/null 2>&1; then
+    bat --color=always --paging=never \
+      --style=numbers \
+      --terminal-width="${PREVIEW_WIDTH}" \
+      -- "${FILE_PATH}" && return 0
+  fi
+  cat -- "${FILE_PATH}"
+}
+
+# stdin 已是格式化后的纯文本。有 bat 就补行号和高亮，否则原样输出。
+preview_formatted() {
+  local lang="$1"
+  if command -v bat >/dev/null 2>&1; then
+    bat -l "$lang" --color=always --paging=never \
+      --style=numbers \
+      --terminal-width="${PREVIEW_WIDTH}"
+    return
+  fi
+  cat
+}
+
+# 这台机器的 yq 是 kislyuk（jq 的 YAML 包装），和 mikefarah 参数不同。
+# JSON：先 -o=json（mikefarah），失败再 yq '.'（kislyuk 默认就是 JSON）。
+# YAML：先 -y（kislyuk 展开成块式 YAML），失败再 yq '.'（mikefarah 默认保持 YAML）。
+preview_json() {
+  if command -v jq >/dev/null 2>&1; then
+    if command -v bat >/dev/null 2>&1; then
+      jq . "${FILE_PATH}" 2>/dev/null | preview_formatted json && return 0
+    elif jq --color-output . "${FILE_PATH}" 2>/dev/null; then
+      return 0
+    fi
+  fi
+  if command -v yq >/dev/null 2>&1; then
+    if command -v bat >/dev/null 2>&1; then
+      { yq -o=json '.' "${FILE_PATH}" 2>/dev/null || yq '.' "${FILE_PATH}" 2>/dev/null; } |
+        preview_formatted json && return 0
+    elif { yq -C -o=json '.' "${FILE_PATH}" 2>/dev/null || yq -C '.' "${FILE_PATH}" 2>/dev/null; }; then
+      return 0
+    fi
+  fi
+  preview_text
+}
+
+preview_yaml() {
+  if command -v yq >/dev/null 2>&1; then
+    if command -v bat >/dev/null 2>&1; then
+      { yq -y '.' "${FILE_PATH}" 2>/dev/null || yq '.' "${FILE_PATH}" 2>/dev/null; } |
+        preview_formatted yaml && return 0
+    elif { yq -C -y '.' "${FILE_PATH}" 2>/dev/null || yq -C '.' "${FILE_PATH}" 2>/dev/null; }; then
+      return 0
+    fi
+  fi
+  preview_text
+}
+
 handle_extension() {
   case "${FILE_EXTENSION_LOWER}" in
   ## Archive
@@ -134,21 +191,19 @@ handle_extension() {
     elinks -dump "${FILE_PATH}" && exit 0
     pandoc -s -t markdown -- "${FILE_PATH}" && exit 0
     bat --color=always --paging=never \
-      --number \
-      --style=plain \
+      --style=numbers \
       --terminal-width="${PREVIEW_WIDTH}" \
       "${FILE_PATH}" && exit 0
     ;;
 
-    ## JSON
+    ## JSON / YAML：先格式化高亮，没有对应工具再用 bat，最后 cat。
   json | ipynb)
-    jq --color-output . "${FILE_PATH}" && exit 0
-    python -m json.tool -- "${FILE_PATH}" && exit 0
-    bat --color=always --line-range=:500 \
-      --paging=never \
-      --style=plain \
-      --terminal-width="${PREVIEW_WIDTH}" \
-      "${FILE_PATH}" && exit 0
+    preview_json && exit 0
+    exit 1
+    ;;
+  yml | yaml)
+    preview_yaml && exit 0
+    exit 1
     ;;
 
     ## Direct Stream Digital/Transfer (DSDIFF) and wavpack aren't detected
@@ -181,7 +236,7 @@ handle_mime() {
     ## Preview as markdown conversion
     pandoc -s -t markdown -- "${FILE_PATH}" | bat -l markdown \
       --color=always --paging=never \
-      --style=plain \
+      --style=numbers \
       --terminal-width="${PREVIEW_WIDTH}" && exit 0
     exit 1
     ;;
@@ -202,13 +257,19 @@ handle_mime() {
     exit 1
     ;;
 
+    ## JSON / YAML（无扩展名时靠 MIME）
+  application/json | text/json)
+    preview_json && exit 0
+    exit 1
+    ;;
+  application/yaml | application/x-yaml | text/yaml | text/x-yaml | text/vnd.yaml)
+    preview_yaml && exit 0
+    exit 1
+    ;;
+
     ## Text
   text/* | */xml)
-    bat --color=always --paging=never \
-      --style=plain \
-      --terminal-width="${PREVIEW_WIDTH}" \
-      "${FILE_PATH}" && exit 0
-    cat "${FILE_PATH}" && exit 0
+    preview_text && exit 0
     exit 1
     ;;
 
