@@ -1,0 +1,39 @@
+# 回车打开文件：扩展名优先于 MIME。都没配到时，才用 joshuto.toml 里的 xdg_open。
+# 文本留在当前终端，等 nvim 退出后再回到 joshuto。
+
+[class]
+text_default = [{ command = "nvim" }]
+
+[mimetype]
+# text/*
+[mimetype.text]
+inherit = "text_default"
+
+# file(1) 常把这些标成 application/*，text/* 盖不住。
+[mimetype.application.subtype.json]
+inherit = "text_default"
+
+[mimetype.application.subtype.javascript]
+inherit = "text_default"
+
+[mimetype.application.subtype.xml]
+inherit = "text_default"
+
+[mimetype.application.subtype.yaml]
+inherit = "text_default"
+
+[mimetype.application.subtype.x-yaml]
+inherit = "text_default"
+
+[mimetype.application.subtype.toml]
+inherit = "text_default"
+
+[mimetype.application.subtype.x-toml]
+inherit = "text_default"
+
+[mimetype.application.subtype.x-ndjson]
+inherit = "text_default"
+
+# 空文件
+[mimetype.inode.subtype.x-empty]
+inherit = "text_default"

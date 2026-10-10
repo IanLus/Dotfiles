@@ -4,6 +4,7 @@ mouse_support = true
 focus_on_create = true
 use_trash = true
 watch_files = true
+# 没在 mimetype.toml 里配到的文件，交给桌面默认程序。
 xdg_open = true
 xdg_open_fork = false
 case_insensitive_ext = false
