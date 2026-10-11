@@ -153,15 +153,10 @@ function Copy-OverlayFile {
     if (Test-Path -LiteralPath $To) {
         Remove-Item -LiteralPath $To -Force
     }
-    # Symbolic links need Developer Mode or an elevated shell. A hard link on
-    # the same volume keeps the profile path and the dotfiles path as one file.
-    try {
-        New-Item -ItemType SymbolicLink -Path $To -Target $From -ErrorAction Stop | Out-Null
-        Write-Host "Linked $(Split-Path -Leaf $To)"
-    } catch {
-        New-Item -ItemType HardLink -Path $To -Target $From -ErrorAction Stop | Out-Null
-        Write-Host "Hard-linked $(Split-Path -Leaf $To)"
-    }
+    # Firefox will not load new-tab images through a symlink that points
+    # outside the profile. A hard link is a normal file with two paths.
+    New-Item -ItemType HardLink -Path $To -Target $From -ErrorAction Stop | Out-Null
+    Write-Host "Hard-linked $(Split-Path -Leaf $To)"
 }
 
 function Write-Utf8NoBom {
