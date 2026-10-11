@@ -6,3 +6,9 @@ window-rule {
     match app-id="^com.danklinux.dms$"
     open-floating true
 }
+
+// @id=wr_1791715678312208192 @name=查看器
+window-rule {
+    match app-id="^(QQ|wechat|thunar)$" title="^(图片和视频|群聊的聊天记录|图片查看器|重命名.*)$"
+    open-floating true
+}
