@@ -14,6 +14,9 @@ end
 
 local intercept = false
 local want_more = false
+-- Command/path word for this completion. Clink's executable matcher omits
+-- non-PATHEXT files (install.ps1); CMD lists every file once the word has `\`.
+local path_file_word = nil
 -- True when the current complete() is descending after `/` on a directory.
 -- Unique file matches must keep the continuous loop (next-arg fzf).
 local slash_continue = false
@@ -143,6 +146,134 @@ local function prefix_from_word(word)
 		dir = os.expand_env(dir) or dir
 	end
 	return dir:gsub("[/\\]+$", "")
+end
+
+local function arm_path_files(rl_buffer)
+	path_file_word = nil
+	local word, word_start, _, line = current_word_info(rl_buffer)
+	if dir_only_complete or not word or word:find("%", 1, true) or not word:find("\\", 1, true) then
+		return
+	end
+	local before = line:sub(1, word_start - 1)
+	-- Argument words already use full filename completion. The gap is the
+	-- command word (and a command after `&` / `|`), which stays exec-only.
+	if before:match("^%s*$") or before:match("[|&]%s*$") then
+		path_file_word = word
+	end
+end
+
+local function match_base(m)
+	local s = type(m) == "table" and m.match or m
+	if type(s) ~= "string" or s == "" then
+		return nil
+	end
+	s = s:gsub("[/\\]+$", "")
+	return (s:match("([^/\\]+)$") or s):lower()
+end
+
+-- Add the files CMD would show for `.\`. Clink's exec matcher keeps only
+-- PATHEXT entries and directories, so install.ps1 never reaches the menu.
+local function supplement_path_files(matches)
+	local word = path_file_word
+	path_file_word = nil
+	if not word or dir_only_complete or type(matches) ~= "table" then
+		return matches
+	end
+	local dir, stem = word:match("^(.*\\)([^\\]*)$")
+	if not dir then
+		return matches
+	end
+	local base = dir:gsub("\\+$", "")
+	if base == "" then
+		base = "."
+	end
+	local items
+	if os.globfiles then
+		local ok, result = pcall(os.globfiles, base .. "\\*", true)
+		if ok and type(result) == "table" then
+			items = result
+		end
+	end
+	if not items and os.glob then
+		local ok, result = pcall(os.glob, base .. "\\*")
+		if ok and type(result) == "table" then
+			items = result
+		end
+	end
+	if not items then
+		return matches
+	end
+	local seen = {}
+	for _, m in ipairs(matches) do
+		local base_name = match_base(m)
+		if base_name then
+			seen[base_name] = true
+		end
+	end
+	local stem_l = stem:lower()
+	for _, item in ipairs(items) do
+		local name, ftype
+		if type(item) == "table" then
+			name, ftype = item.name, item.type
+		else
+			name = item
+		end
+		if name then
+			name = name:gsub("[/\\]+$", ""):match("([^/\\]+)$") or name
+		end
+		if name and name ~= "" and name ~= "." and name ~= ".." then
+			if stem_l == "" or name:sub(1, #stem):lower() == stem_l then
+				local key = name:lower()
+				if not seen[key] then
+					local is_dir = ftype and ftype:find("dir", 1, true) ~= nil
+					if not is_dir and os.isdir then
+						local ok, d = pcall(os.isdir, base .. "\\" .. name)
+						is_dir = ok and d or false
+					end
+					local text = dir .. name
+					if is_dir and text:sub(-1) ~= "\\" then
+						text = text .. "\\"
+					end
+					seen[key] = true
+					matches[#matches + 1] = {
+						match = text,
+						type = is_dir and "dir" or "file",
+					}
+				end
+			end
+		end
+	end
+	return matches
+end
+
+local function dedupe_match_basenames(matches)
+	if type(matches) ~= "table" then
+		return matches
+	end
+	local seen = {}
+	local out = {}
+	for _, m in ipairs(matches) do
+		local base_name = match_base(m)
+		if not base_name or not seen[base_name] then
+			if base_name then
+				seen[base_name] = true
+			end
+			out[#out + 1] = m
+		end
+	end
+	return out
+end
+
+-- Earlier than the executable matcher, which can return true and stop later generators.
+local path_file_gen = clink.generator(-1000)
+function path_file_gen:generate(_, match_builder) -- luacheck: no unused
+	if not path_file_word then
+		return false
+	end
+	for _, m in ipairs(supplement_path_files({})) do
+		match_builder:addmatch(m)
+	end
+	return false
 end
 
 -- Show file/dir matches as names relative to the typed directory, not pwd.
@@ -308,6 +439,49 @@ local function buffer_len(rl_buffer)
 		return rl_buffer:getlength()
 	end
 	return #rl_buffer:getbuffer()
+end
+
+-- `./` is a relative path, not a CMD switch, when the text to the left of `/`
+-- is a directory (`.` / `..` / an existing folder). `dir /b` stays a switch.
+local function path_slash_to_backslash(word)
+	if not word or word == "" or not word:find("/", 1, true) or word:find("://", 1, true) then
+		return word
+	end
+	if word:sub(1, 1) == "/" then
+		return word
+	end
+	local acc = ""
+	for i = 1, #word do
+		local c = word:sub(i, i)
+		if c ~= "/" then
+			acc = acc .. c
+		else
+			local left = acc:gsub("[/\\]+$", "")
+			local as_dir = left == "." or left == ".." or token_is_dir(left)
+			acc = acc .. (as_dir and "\\" or "/")
+		end
+	end
+	return acc
+end
+
+local function normalize_path_slashes(rl_buffer)
+	local _, start_idx, cursor, line = current_word_info(rl_buffer)
+	local raw = line:sub(start_idx, cursor - 1)
+	if raw == "" or raw:find('"', 1, true) or raw:find("'", 1, true) then
+		return
+	end
+	local new_word = path_slash_to_backslash(raw)
+	if new_word == raw then
+		return
+	end
+	local new_line = line:sub(1, start_idx - 1) .. new_word .. line:sub(cursor)
+	local new_cursor = start_idx + #new_word
+	rl_buffer:beginundogroup()
+	rl_buffer:remove(1, buffer_len(rl_buffer) + 1)
+	rl_buffer:setcursor(1)
+	rl_buffer:insert(new_line)
+	rl_buffer:setcursor(new_cursor)
+	rl_buffer:endundogroup()
 end
 
 -- Nested `complete` + fzf --height can leave the input looking like only the
@@ -620,7 +794,9 @@ function disp_gen:generate() -- luacheck: no unused
 	if not clink.onfiltermatches then
 		return false
 	end
-	clink.onfiltermatches(relativize_path_display)
+	clink.onfiltermatches(function(matches)
+		return relativize_path_display(dedupe_match_basenames(supplement_path_files(matches)))
+	end)
 	if intercept then
 		clink.onfiltermatches(function(matches)
 			clink.onfiltermatches(run_fzf)
@@ -730,10 +906,12 @@ end
 local function run_continuous_loop(rl_buffer)
 	slash_continue = false
 	while true do
+		normalize_path_slashes(rl_buffer)
 		local word, word_start, word_end, line = current_word_info(rl_buffer)
 		pending_query = query_from_word(word)
 		dir_only_complete = is_dir_only_command(line)
 		env_name_complete = word:match("^%%[^/\\]*$") ~= nil
+		arm_path_files(rl_buffer)
 		local prefix = prefix_from_word(word)
 		if prefix ~= "" then
 			os.setenv("CLINK_FZF_PATH_PREFIX", prefix)
@@ -798,6 +976,7 @@ end
 
 -- luacheck: globals fzf_complete_force fzf_complete_with_query
 function fzf_complete_with_query(rl_buffer, line_state)
+	normalize_path_slashes(rl_buffer)
 	-- `**` recursive listing lives in clink-fzf. Call the function directly:
 	-- `rl.invokecommand("luafunc:...")` from inside a luafunc does not run it.
 	if fzf_complete_force and ends_with_globstar(line_state, rl_buffer) then
@@ -814,12 +993,17 @@ function fzf_complete_with_query(rl_buffer, line_state)
 	end
 
 	if not io.popenrw then
+		local line = rl_buffer:getbuffer()
+		dir_only_complete = is_dir_only_command(line)
+		arm_path_files(rl_buffer)
 		rl.invokecommand("complete")
+		path_file_word = nil
 		return
 	end
 
 	local prev_prefix = os.getenv("CLINK_FZF_PATH_PREFIX")
 	local ok, err = pcall(run_continuous_loop, rl_buffer)
+	path_file_word = nil
 	restore_path_prefix(prev_prefix)
 	if rl_buffer.refreshline then
 		rl_buffer:refreshline()
