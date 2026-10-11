@@ -1,1 +1,98 @@
 /* Local FlexFox overrides. Add extra rules here if needed. */
+
+/*
+ * Glass surfaces. Firefox can blur chrome that composites over the window
+ * (urlbar results, menus, panels, the floating vertical tab strip).
+ * The page, OS file dialogs, and the window frame itself are separate
+ * layers and do not pick up backdrop-filter.
+ */
+:root {
+  --uc-glass-blur: blur(28px) saturate(1.45);
+  --uc-glass-bg: light-dark(rgb(255 255 255 / 0.62), rgb(28 28 32 / 0.52));
+  --uc-glass-border: light-dark(rgb(0 0 0 / 0.1), rgb(255 255 255 / 0.14));
+}
+
+/*
+ * Firefox 157 paints the suggestion list on .urlbarView-background, which is
+ * promoted to the top layer. Blur cannot sample the page unless the remote
+ * browser is a backdrop root (bug 1799334).
+ */
+browser:not(
+  .devtools-toolbox-side-iframe,
+  .devtools-toolbox-bottom-iframe,
+  .devtools-toolbox-iframe.side-host,
+  .devtools-toolbox-iframe.bottom-host
+) {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+}
+
+#urlbar[popover-open],
+#urlbar[breakout][breakout-extend] {
+  will-change: translate !important;
+}
+
+#main-window #urlbar[popover-open] > .urlbarView:popover-open > .urlbarView-background,
+#main-window #urlbar:is([breakout][breakout-extend], [open]) > .urlbarView > .urlbarView-background,
+.urlbarView-background {
+  background: var(--uc-glass-bg) !important;
+  background-color: var(--uc-glass-bg) !important;
+  background-image: none !important;
+  backdrop-filter: var(--uc-glass-blur) !important;
+  box-shadow: none !important;
+}
+
+.urlbarView-body-outer,
+.urlbarView-body-inner,
+#urlbar-results,
+.urlbarView-row-inner {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+panel,
+menupopup,
+panelview,
+.panel-subview-body,
+#PopupAutoComplete > richlistbox,
+#PopupAutoComplete {
+  --panel-background: transparent !important;
+  --arrowpanel-background: transparent !important;
+  --panel-border-color: var(--uc-glass-border) !important;
+  --menu-background-color: transparent !important;
+  --menu-border-color: var(--uc-glass-border) !important;
+}
+
+.panel-arrowcontent,
+panel > .panel-arrowcontainer > .panel-arrowcontent,
+menupopup,
+#PopupAutoComplete {
+  background: var(--uc-glass-bg) !important;
+  background-color: var(--uc-glass-bg) !important;
+  backdrop-filter: var(--uc-glass-blur) !important;
+  border-color: var(--uc-glass-border) !important;
+}
+
+/* Windows acrylic shows through chrome only where the toolbar is transparent. */
+@media -moz-pref("widget.windows.mica") {
+  :root,
+  #navigator-toolbox,
+  #nav-bar,
+  #PersonalToolbar,
+  #TabsToolbar,
+  #titlebar,
+  .browser-titlebar,
+  #browser {
+    background-color: transparent !important;
+    background-image: none !important;
+  }
+}
+
+/* Expanded vertical tabs float over the page, so blur the page behind them. */
+#sidebar-main[sidebar-launcher-expanded="true"],
+#sidebar-box[sidebar-launcher-hovered],
+#tabbrowser-tabbox[sidebar-launcher-hovered] #sidebar-main {
+  background: var(--uc-glass-bg) !important;
+  background-color: var(--uc-glass-bg) !important;
+  backdrop-filter: var(--uc-glass-blur) !important;
+}

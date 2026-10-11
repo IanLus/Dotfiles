@@ -150,8 +150,18 @@ function Copy-OverlayFile {
     if (-not (Test-Path -LiteralPath $parent)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
-    Copy-Item -LiteralPath $From -Destination $To -Force
-    Write-Host "Copied $(Split-Path -Leaf $From)"
+    if (Test-Path -LiteralPath $To) {
+        Remove-Item -LiteralPath $To -Force
+    }
+    # Symbolic links need Developer Mode or an elevated shell. A hard link on
+    # the same volume keeps the profile path and the dotfiles path as one file.
+    try {
+        New-Item -ItemType SymbolicLink -Path $To -Target $From -ErrorAction Stop | Out-Null
+        Write-Host "Linked $(Split-Path -Leaf $To)"
+    } catch {
+        New-Item -ItemType HardLink -Path $To -Target $From -ErrorAction Stop | Out-Null
+        Write-Host "Hard-linked $(Split-Path -Leaf $To)"
+    }
 }
 
 function Write-Utf8NoBom {

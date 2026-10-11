@@ -14,8 +14,13 @@ user_pref("uc.flex.disable-sidebery-autohide", false);
 user_pref("sidebar.revamp", true);
 user_pref("sidebar.verticalTabs", true);
 
-// CSS :has()
+// CSS :has() and backdrop-filter for chrome glass (urlbar, menus, panels).
 user_pref("layout.css.has-selector.enabled", true);
+user_pref("layout.css.backdrop-filter.enabled", true);
+
+// Windows 11: acrylic behind the top-level window. Ignored on Linux.
+user_pref("widget.windows.mica", true);
+user_pref("widget.windows.mica.toplevel-backdrop", 2);
 
 // Keep the previous ShyFox new-tab wallpapers instead of Firefox's built-in ones
 user_pref("browser.newtabpage.activity-stream.newtabWallpapers.enabled", false);
