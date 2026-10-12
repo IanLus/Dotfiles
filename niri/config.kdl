@@ -245,6 +245,7 @@ window-rule {
     match app-id=r#"^blueman-manager$"#
     match app-id=r#"^org\.gnome\.Nautilus$"#
     match app-id=r#"^xdg-desktop-portal$"#
+    match app-id="^(?i)(qq|wechat|thunar)$" title="^(图片和视频|群聊的聊天记录|图片查看器|重命名.*)$"
     open-floating true
 }
 window-rule {

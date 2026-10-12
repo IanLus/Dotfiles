@@ -4,7 +4,6 @@
 // @id=dms-floating-windows @name=DMS Floating Windows
 window-rule {
     match app-id="^com.danklinux.dms$"
-    match app-id="^(?i)(qq|wechat|thunar)$" title="^(图片和视频|群聊的聊天记录|图片查看器|重命名.*)$"
     open-floating true
 }
 
