@@ -1,4 +1,6 @@
 -- v 模式用字母做候选序号。数字和运算符仍然写入编码。
+-- uu 符号里，数字只有在能延长一条真实编码时才继续输入（uu1 → uu10）；
+-- 其余数字是当前页的候选选择键。
 local LETTERS = "abcdefghijklmnopqrstuvwxyz"
 local DIGITS = "123456789"
 
@@ -48,6 +50,58 @@ local function apply_labels(env, enabled)
   env.letter_labels = enabled
 end
 
+local function fallback_symbol_codes()
+  local codes = {}
+  for i = 0, 9 do
+    codes["uu" .. tostring(i)] = true
+  end
+  codes["uu10"] = true
+  return codes
+end
+
+local function load_symbol_codes(config)
+  local codes = {}
+  local ok, symbols = pcall(function()
+    return config:get_map("punctuator/symbols")
+  end)
+  if ok and symbols then
+    local ok_keys, keys = pcall(function()
+      return symbols:keys()
+    end)
+    if ok_keys and type(keys) == "table" then
+      for _, key in ipairs(keys) do
+        if type(key) == "string" and key:sub(1, 2) == "uu" then
+          codes[key] = true
+        end
+      end
+    end
+  end
+  if not next(codes) then
+    codes = fallback_symbol_codes()
+  end
+  return codes
+end
+
+local function symbol_prefixes(env)
+  if env.symbol_prefixes then
+    return env.symbol_prefixes
+  end
+  local prefixes = {}
+  local codes = load_symbol_codes(env.engine.schema.config)
+  for code in pairs(codes) do
+    for i = 1, #code do
+      prefixes[code:sub(1, i)] = true
+    end
+  end
+  env.symbol_prefixes = prefixes
+  local count = 0
+  for _ in pairs(codes) do
+    count = count + 1
+  end
+  log_line("uu symbol codes=" .. tostring(count))
+  return prefixes
+end
+
 local function select_on_page(ctx, env, index)
   local page_size = page_size_of(env)
   local page_start = 0
@@ -58,6 +112,39 @@ local function select_on_page(ctx, env, index)
     page_start = math.floor(selected / page_size) * page_size
   end
   return ctx:select(page_start + index)
+end
+
+-- 与 librime selector 一致：1→0 … 9→8，0→9。
+local function digit_index(ch)
+  local n = tonumber(ch)
+  if not n then
+    return nil
+  end
+  return (n + 9) % 10
+end
+
+-- 数字会被 recognizer 的 uu 模式吞掉。能拼出更长符号编码时继续输入，否则选词。
+local function handle_uu_digit(key, env, ctx, input, repr)
+  if key:release() or key:ctrl() or key:alt() or key:super() then
+    return false
+  end
+  if not input:find("^uu") then
+    return false
+  end
+  local digit = repr:match("^([0-9])$")
+  if not digit then
+    return false
+  end
+  local next_input = input .. digit
+  if symbol_prefixes(env)[next_input] then
+    return false
+  end
+  local index = digit_index(digit)
+  local n = page_size_of(env)
+  if index and index < n and ctx:has_menu() then
+    select_on_page(ctx, env, index)
+  end
+  return true
 end
 
 local function processor(key, env)
@@ -73,6 +160,10 @@ local function processor(key, env)
     v_mode = false
   end
   apply_labels(env, v_mode)
+
+  if handle_uu_digit(key, env, ctx, input, repr) then
+    return 1
+  end
 
   if input == "" or input:sub(1, 1) ~= "v" then
     return 2

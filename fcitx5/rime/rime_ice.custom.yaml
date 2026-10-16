@@ -11,7 +11,8 @@ patch:
   stroke_lookup/tag: stroke
   stroke_lookup/enable_completion: true
   chaizi_lookup/tag: radical_lookup
-  recognizer/patterns/punct: "^uu[a-z0-9]+$"
+  # 大写字母变体 uuA 也要进符号段。选择键由 microsoft_uv_processor 处理，避免数字被这条规则吃掉。
+  recognizer/patterns/punct: "^uu[A-Za-z0-9]+$"
   recognizer/patterns/number: "^v[0-9]+[.]?[0-9]*"
   recognizer/patterns/calculator: "^v[0-9].*"
   calculator/prefix: "v"

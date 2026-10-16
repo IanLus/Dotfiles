@@ -2,7 +2,7 @@
 # encoding: utf-8
 
 # 要比共享目录的同名文件的 config_version 大才可以生效
-config_version: "2026-02-06"
+config_version: "2026-10-16"
 
 # 方案列表
 schema_list:
@@ -210,9 +210,9 @@ key_binder:
     - { when: has_menu, accept: comma, send: Page_Up }
     - { when: has_menu, accept: period, send: Page_Down }
 
-    # 翻页 【】。以词定字改到 Control+9 / Control+0，避免占用中括号。
-    - { when: has_menu, accept: bracketleft, send: Page_Up }
-    - { when: has_menu, accept: bracketright, send: Page_Down }
+    # 【】移动到上一个 / 下一个候选。以词定字在 Control+9 / Control+0。
+    - { when: has_menu, accept: bracketleft, send: Up }
+    - { when: has_menu, accept: bracketright, send: Down }
 
     # 两种按键配置，鼠须管 Control+Shift+4 生效，小狼毫 Control+Shift+dollar 生效，都写上了。
     # numbered_mode_switch:
