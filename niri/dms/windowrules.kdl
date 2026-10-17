@@ -7,17 +7,6 @@ window-rule {
     open-floating true
 }
 
-// @id=wr_1791723910735533822 @name=除kitty外的浮动窗口添加透明模糊效果
-window-rule {
-    match is-floating=true
-    exclude app-id="kitty"
-    opacity 0.76
-    background-effect {
-        blur true
-        xray false
-    }
-}
-
 // @id=wr_1791727561512684841 @name=用于浮动kitty的特性
 window-rule {
     match app-id="kitty" title="^floating$"

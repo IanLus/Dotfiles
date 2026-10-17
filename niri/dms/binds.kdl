@@ -1,7 +1,6 @@
 binds {
     // === System & Overview ===
     Mod+O repeat=false { toggle-overview; }
-    Mod+Tab repeat=false { toggle-overview; }
     Mod+Shift+Slash { show-hotkey-overlay; }
 
     // === Application Launchers ===
@@ -217,10 +216,18 @@ binds {
     XF86Launch1 hotkey-overlay-title="Screenshot: Region" { spawn "dms" "screenshot"; }
     Ctrl+XF86Launch1 hotkey-overlay-title="Screenshot: Full Screen" { spawn "dms" "screenshot" "full"; }
     Alt+XF86Launch1 hotkey-overlay-title="Screenshot: Window" { spawn "dms" "screenshot" "window"; }
-    Print hotkey-overlay-title="Screenshot: Region" { spawn "dms" "screenshot"; }
-    Ctrl+Print hotkey-overlay-title="Screenshot: Full Screen" { spawn "dms" "screenshot" "full"; }
-    Alt+Print hotkey-overlay-title="Screenshot: Window" { spawn "dms" "screenshot" "window"; }
-    Ctrl+Alt+S hotkey-overlay-title="Quick Capture: Region" { spawn "dms" "ipc" "call" "quickCapture" "screenshot" "region" "edit"; }
+    // Print hotkey-overlay-title="Screenshot: Region" { spawn "dms" "screenshot"; }
+    // Ctrl+Print hotkey-overlay-title="Screenshot: Full Screen" { spawn "dms" "screenshot" "full"; }
+    // Alt+Print hotkey-overlay-title="Screenshot: Window" { spawn "dms" "screenshot" "window"; }
+    Print hotkey-overlay-title="Screenshot: Region" { spawn "dms" "ipc" "call" "quickCapture" "screenshot" "region" "edit"; }
+    Ctrl+Print hotkey-overlay-title="Screenshot: Full Screen" { spawn "dms" "ipc" "call" "quickCapture" "screenshot" "full" "edit"; }
+    Alt+Print hotkey-overlay-title="Screenshot: Window" { spawn "dms" "ipc" "call" "quickCapture" "screenshot" "window" "edit"; }
+    Mod+Tab hotkey-overlay-title="Screenshot: Show History" { spawn "dms" "ipc" "call" "quickCapture" "showHistory"; }
+
+    // === Screen Recording===
+    XF86SelectiveScreenshot hotkey-overlay-title="ScreenRecording: Region" { spawn "dms" "ipc" "call" "quickCapture" "recordToggle" "region"; }
+    Ctrl+XF86SelectiveScreenshot hotkey-overlay-title="ScreenRecording: Full Screen" { spawn "dms" "ipc" "call" "quickCapture" "recordToggle" "screen"; }
+    Alt+XF86SelectiveScreenshot hotkey-overlay-title="ScreenRecording: Full Screen" { spawn "dms" "ipc" "call" "quickCapture" "recordToggle" "portal"; }
 
     // === Display Profiles ===
     Mod+P hotkey-overlay-title="Cycle Display Profile" {
