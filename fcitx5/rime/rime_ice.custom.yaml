@@ -14,5 +14,6 @@ patch:
   # 大写字母变体 uuA 也要进符号段。选择键由 microsoft_uv_processor 处理，避免数字被这条规则吃掉。
   recognizer/patterns/punct: "^uu[A-Za-z0-9]+$"
   recognizer/patterns/number: "^v[0-9]+[.]?[0-9]*"
-  recognizer/patterns/calculator: "^v[0-9].*"
+  # 只匹配数字和运算符。混入其它字符后整段不再是公式，数字恢复为选词键。
+  recognizer/patterns/calculator: "^v[0-9.()+*/=-]+"
   calculator/prefix: "v"
