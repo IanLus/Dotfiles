@@ -182,9 +182,9 @@ recognizer:
 
 # 快捷键
 key_binder:
-  # Lua 配置: 以词定字（上屏当前词句的第一个或最后一个字），和中括号翻页有冲突
-  select_first_character: "Control+9" # 左中括号 [
-  select_last_character: "Control+0" # 右中括号 ]
+  # Lua 配置: 以词定字（上屏当前词句的第一个或最后一个字）
+  select_first_character: "minus"
+  select_last_character: "equal"
 
   bindings:
     # Tab / Shift+Tab 切换光标至下/上一个拼音
@@ -203,14 +203,14 @@ key_binder:
     # has_menu 始终不会输出。
 
     # 翻页 - =
-    - { when: has_menu, accept: minus, send: Page_Up }
-    - { when: has_menu, accept: equal, send: Page_Down }
+    # - { when: has_menu, accept: minus, send: Page_Up }
+    # - { when: has_menu, accept: equal, send: Page_Down }
 
     # 翻页 ，。
     - { when: has_menu, accept: comma, send: Page_Up }
     - { when: has_menu, accept: period, send: Page_Down }
 
-    # 【】移动到上一个 / 下一个候选。以词定字在 Control+9 / Control+0。
+    # 【】移动到上一个 / 下一个候选。
     - { when: has_menu, accept: bracketleft, send: Up }
     - { when: has_menu, accept: bracketright, send: Down }
 
@@ -220,25 +220,25 @@ key_binder:
     # - { when: always, select: .next, accept: Control+Shift+exclam }             # 在最近的两个方案之间切换
     # - { when: always, toggle: ascii_mode, accept: Control+Shift+2 }             # 切换中英
     # - { when: always, toggle: ascii_mode, accept: Control+Shift+at }            # 切换中英
-    - { when: always, toggle: ascii_punct, accept: Control+Shift+comma } # 切换中英标点
-    - { when: always, toggle: ascii_punct, accept: Control+Shift+numbersign } # 切换中英标点
+    # - { when: always, toggle: ascii_punct, accept: Control+Shift+comma } # 切换中英标点
+    # - { when: always, toggle: ascii_punct, accept: Control+Shift+numbersign } # 切换中英标点
     - { when: always, toggle: traditionalization, accept: Control+Shift+F } # 切换简繁
     - { when: always, toggle: traditionalization, accept: Control+Shift+f } # 切换简繁
     # - { when: always, toggle: full_shape, accept: Control+Shift+5 }             # 切换全半角
     # - { when: always, toggle: full_shape, accept: Control+Shift+percent }       # 切换全半角
 
     # emacs_editing:
-    # - { when: composing, accept: Control+p, send: Up }
-    # - { when: composing, accept: Control+n, send: Down }
-    # - { when: composing, accept: Control+b, send: Left }
-    # - { when: composing, accept: Control+f, send: Right }
-    # - { when: composing, accept: Control+a, send: Home }
-    # - { when: composing, accept: Control+e, send: End }
-    # - { when: composing, accept: Control+d, send: Delete }
+    - { when: composing, accept: Control+p, send: Up }
+    - { when: composing, accept: Control+n, send: Down }
+    - { when: composing, accept: Control+b, send: Left }
+    - { when: composing, accept: Control+f, send: Right }
+    - { when: composing, accept: Control+a, send: Home }
+    - { when: composing, accept: Control+e, send: End }
+    - { when: composing, accept: Control+d, send: Delete }
     # - { when: composing, accept: Control+k, send: Shift+Delete }
-    # - { when: composing, accept: Control+h, send: BackSpace }
+    - { when: composing, accept: Control+h, send: BackSpace }
     # - { when: composing, accept: Control+g, send: Escape }
-    # - { when: composing, accept: Control+bracketleft, send: Escape }
+    - { when: composing, accept: Control+bracketleft, send: Escape }
     # - { when: composing, accept: Control+y, send: Page_Up }
     # - { when: composing, accept: Alt+v, send: Page_Up }
     # - { when: composing, accept: Control+v, send: Page_Down }
@@ -247,8 +247,8 @@ key_binder:
     # - { when: always, accept: Control+Shift+space, select: .next }
     # - { when: always, accept: Shift+space, toggle: ascii_mode }
     # - { when: always, accept: Control+comma, toggle: full_shape }
-    # - { when: always, accept: Control+period, toggle: ascii_punct }
-    # - { when: always, accept: Control+slash, toggle: traditionalization }
+    - { when: always, accept: Control+period, toggle: ascii_punct }
+    - { when: always, accept: Control+slash, toggle: traditionalization }
 
     # 将小键盘 0~9 . 映射到主键盘，数字金额大写的 Lua 如 R1234.5678 可使用小键盘输入
     - { accept: KP_0, send: 0, when: composing }
