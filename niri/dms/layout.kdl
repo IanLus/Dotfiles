@@ -22,6 +22,11 @@ window-rule {
     draw-border-with-background false
 }
 
+blur {
+    passes 3
+    offset 1.1
+}
+
 layer-rule {
     background-effect {
         xray false
@@ -29,7 +34,7 @@ layer-rule {
 }
 
 window-rule {
-    match app-id="^com.danklinux.dms$"
+    match app-id="^(dev.duxlabs.shell|com.danklinux.dms)$"
     background-effect {
         xray false
     }
