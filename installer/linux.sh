@@ -85,6 +85,14 @@ if command -v qt6ct >/dev/null; then
 fi
 if command -v wps >/dev/null; then
   link_config "$DOTDIR/kingsoft.conf" "$CONFIG_DIR/kingsoft.conf"
+  # 文档编辑区是自带 Qt，不走 Wayland text-input。桌面项改走 XWayland + fcitx。
+  mkdir -p "$DATA_HOME/bin" "$DATA_HOME/applications"
+  ln -sfn "$DOTDIR/bin/wps-fcitx" "$DATA_HOME/bin/wps-fcitx"
+  for src in "$DOTDIR/xdg-data/applications"/wps-office-*.desktop; do
+    [[ -f "$src" ]] || continue
+    dest="$DATA_HOME/applications/$(basename "$src")"
+    sed "s|__WPS_FCITX__|$DATA_HOME/bin/wps-fcitx|g" "$src" >"$dest"
+  done
 fi
 if command -v clash-verge >/dev/null; then
   link_config "$DOTDIR/autostart/Clash Verge.desktop" "$CONFIG_DIR/autostart/Clash Verge.desktop"

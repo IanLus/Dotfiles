@@ -1,0 +1,8 @@
+#!/bin/bash
+# WPS 文档编辑区是自带的 Qt，不走 Wayland text-input。
+# 候选框只在 XWayland + fcitx 模块下出现。
+export QT_IM_MODULE=fcitx
+export GTK_IM_MODULE=fcitx
+export XMODIFIERS="@im=fcitx"
+export QT_QPA_PLATFORM=xcb
+exec "$@"
