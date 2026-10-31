@@ -34,10 +34,6 @@ zinit wait lucid light-mode for \
   atclone"sed -i '105,108s/\\\e\\\e/\\^o/g' sudo.plugin.zsh" \
   nocompile"!" atpull"%atclone" \
     OMZP::sudo/sudo.plugin.zsh \
-  atclone"command -v ranger >/dev/null && mkdir -p ~/.config/ranger/plugins && mv ranger_zlua.py ~/.config/ranger/plugins/" \
-  atload"command -v ranger >/dev/null && export RANGER_ZLUA='$ZINIT[PLUGINS_DIR]/skywind3000---z.lua/z.lua'" \
-  atpull'!git reset --hard' \
-    skywind3000/z.lua \
   hlissner/zsh-autopair
 
 # install manual and scripts

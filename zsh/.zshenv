@@ -1,13 +1,7 @@
 #!/hint/zsh
-export _ZL_DATA="$XDG_CONFIG_HOME/.zlua"
-export _ZL_ECHO=1
-export _ZL_MATCH_MODE=1
-export _ZL_ADD_ONCE=1
-export _ZL_ZSH_NO_FZF=1
-export _ZL_ROOT_MARKERS=".git,.svn,.hg,.root,package.json,.vscode"
-export _ZL_INT_SORT=1
-export _ZL_HYPHEN=1
-export FZ_HISTORY_CD_CMD="_zlua"
+export _ZO_DATA_DIR="$XDG_DATA_HOME/zoxide"
+export _ZO_ECHO=1
+export FZ_HISTORY_CD_CMD="zoxide query --list"
 export RANGER_LOAD_DEFAULT_RC=false
 export W3M_DIR=$XDG_CONFIG_HOME/.w3m
 export HISTFILE="$XDG_CONFIG_HOME/zsh_history"

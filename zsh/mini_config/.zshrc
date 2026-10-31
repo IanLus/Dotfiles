@@ -29,7 +29,6 @@ zinit wait lucid light-mode for \
   atclone"sed -i '105,108s/\\\e\\\e/\\^o/g' sudo.plugin.zsh" \
   nocompile"!" atpull"%atclone" \
     OMZP::sudo/sudo.plugin.zsh \
-  skywind3000/z.lua \
   hlissner/zsh-autopair
 
 zinit wait lucid light-mode from"gh-r" completions blockf for \
@@ -72,7 +71,7 @@ zinit wait lucid light-mode as="completion" blockf for \
     https://raw.githubusercontent.com/wit-l/Dotfiles/main/eza/_eza
 
 zinit wait lucid light-mode for \
-  blockf atinit"zicompinit" \
+  blockf atinit"zicompinit" atload'eval "$(zoxide init zsh | sed "s/^function zi(/function zf(/")"' \
     Aloxaf/fzf-tab \
   atload"_zsh_autosuggest_start" \
     zsh-users/zsh-autosuggestions \
@@ -109,7 +108,7 @@ zle -N zle-keymap-select
 echo -ne '\e[5 q'
 
 # == fzf-tab
-zstyle ':fzf-tab:complete:_zlua:*' query-string input
+zstyle ':fzf-tab:complete:__zoxide_z_complete:*' query-string input
 zstyle ':completion:*:*:*:*:processes' command "ps -u $USER -o pid,user,comm,cmd -w -w"
 zstyle ':fzf-tab:complete:kill:argument-rest' fzf-preview 'ps --pid=$word -o cmd --no-headers -w -w'
 zstyle ':fzf-tab:complete:kill:argument-rest' fzf-flags '--preview-window=down:3:wrap'

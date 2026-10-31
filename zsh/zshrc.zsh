@@ -29,7 +29,7 @@ bindkey '^[f' forward-word
 bindkey '^[b' backward-word
 
 # == fzf-tab
-zstyle ':fzf-tab:complete:_zlua:*' query-string input
+zstyle ':fzf-tab:complete:__zoxide_z_complete:*' query-string input
 # preview of full commandline arguments
 # give a preview of commandline arguments when completing `kill|ps`
 zstyle ':completion:*:*:*:*:processes' command "ps -u $USER -o pid,user,comm,cmd -w -w"
@@ -111,7 +111,7 @@ zstyle ':fzf-tab:complete:*:*' fzf-preview '$DOTDIR/less/lessfilter.sh ${(Q)real
 zstyle ':fzf-tab:complete:*:options' fzf-preview
 zstyle ':fzf-tab:complete:*:argument-1' fzf-preview
 zstyle ':fzf-tab:complete:systemctl:argument-rest' fzf-preview
-zstyle ':fzf-tab:complete:(_zlua|tmux*|docker*|pkill*|git-stash):*' fzf-preview
+zstyle ':fzf-tab:complete:(__zoxide_z_complete|tmux*|docker*|pkill*|git-stash):*' fzf-preview
 # 命令位（gs<Tab>）以及 which/type：预览别名/函数/内置（定义由 _dotfiles_ftb_popup 导出）
 zstyle ':fzf-tab:complete:(-command-|which|whence|where|type):*' fzf-preview \
   "source ${(q)DOTDIR}/fzf/preview-which.zsh && _dotfiles_preview_which"
@@ -170,3 +170,5 @@ mamba() {
 }
 
 [[ -f $DOTDIR/zsh/proxy.zsh ]] && source $DOTDIR/zsh/proxy.zsh
+
+command -v zoxide >/dev/null && eval "$(zoxide init zsh | sed 's/^function zi(/function zf(/')"
