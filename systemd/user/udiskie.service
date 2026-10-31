@@ -1,0 +1,11 @@
+[Unit]
+Description=Auto-mount USB drives
+BindsTo=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/udiskie
+Restart=always
+
+[Install]
+WantedBy=graphical-session.target

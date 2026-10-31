@@ -1,0 +1,61 @@
+{
+  "screenshotPlus": {
+    "enabled": true,
+    "fileNamePattern": "%Y-%m-%d %H-%M-%S.png",
+    "saveDirectory": "~/Pictures/Screenshots",
+    "backend": "cli"
+  },
+  "quickCapture": {
+    "enabled": true,
+    "show_shortcut_hints": true,
+    "showToolbarBorder": true,
+    "radialMenuOpacity": 60,
+    "ipcCommandsExpanded": true,
+    "creditsExpanded": true
+  },
+  "dankTranslate": {
+    "enabled": true,
+    "defaultLang": "zh"
+  },
+  "dankLauncherKeys": {
+    "enabled": true,
+    "noTrigger": false
+  },
+  "bongoCat": {
+    "enabled": true,
+    "catColorMode": "primary",
+    "classicIdle": true,
+    "pawHoldTime": 0,
+    "showMetrics": false,
+    "waitingTimeout": 2,
+    "catSizePercent": 120,
+    "catYOffset": 2,
+    "mouseEnabled": false,
+    "metricsInBar": true,
+    "soundEnabled": false,
+    "soundVolume": 60,
+    "selectedDevicePath": "all"
+  },
+  "dankKDEConnect": {
+    "enabled": true,
+    "selectedDeviceId": ""
+  },
+  "emojiLauncher": {
+    "enabled": true,
+    "recentEmojis": "󰘑,,🐖,🐷,🙀,,⌣"
+  },
+  "dankGifSearch": {
+    "enabled": true
+  },
+  "calculator": {
+    "enabled": true,
+    "trigger": "=",
+    "calcEngine": "default"
+  },
+  "dankPomodoroTimer": {
+    "enabled": true,
+    "autoStartPomodoros": true,
+    "autoStartBreaks": true,
+    "autoSetDND": true
+  }
+}
