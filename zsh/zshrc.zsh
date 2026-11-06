@@ -105,6 +105,14 @@ zstyle ':completion:*:*:docker-*:*' option-stacking yes
 # show systemd unit status
 zstyle ':fzf-tab:complete:systemctl-*:*' fzf-preview 'SYSTEMD_COLORS=1 systemctl status $word'
 
+# pacman / paru：包名、仓库名、包组名都不是文件，realpath 为空，走 lessfilter 的 cat 会报错。
+# 按操作（-S/-Q/-F/-U…）和修饰符（-i/-l/-g/-o…）选对应的 pacman 查询来预览。
+if [[ -f $DOTDIR/fzf/preview-pacman.zsh ]]; then
+  source $DOTDIR/fzf/preview-pacman.zsh
+  zstyle ':fzf-tab:complete:(pacman|pacman-conf|paru|yay|pikaur):*' fzf-preview \
+    'source ${(q)DOTDIR}/fzf/preview-pacman.zsh && _dotfiles_preview_pacman'
+fi
+
 # show file contents（图片走 lessfilter 的 sixel，与 Ctrl+T / ** 一致）
 zstyle ':fzf-tab:complete:*:*' fzf-preview '$DOTDIR/less/lessfilter.sh ${(Q)realpath}'
 # To disable or override preview for command options and subcommands, use
