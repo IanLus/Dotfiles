@@ -7,6 +7,58 @@
 
 local is_win = package.config:sub(1, 1) == "\\"
 local null = is_win and "nul" or "/dev/null"
+local sep = is_win and "\\" or "/"
+
+local function quote_arg(s)
+	s = tostring(s)
+	if is_win then
+		return '"' .. s:gsub('"', "") .. '"'
+	end
+	return "'" .. s:gsub("'", "'\\''") .. "'"
+end
+
+-- git status 给的是相对仓库根的路径，而脚本可能在子目录里跑。
+-- 所有 git 操作统一 -C 到仓库根，打开文件则用绝对路径。
+local _root
+local function repo_root()
+	if _root then
+		return _root
+	end
+	_root = ""
+	local r = io.popen("git rev-parse --show-toplevel 2>" .. null)
+	if r then
+		local line = r:read("*l") or ""
+		r:close()
+		line = line:gsub("\r$", "")
+		if line ~= "" then
+			_root = line
+		end
+	end
+	return _root
+end
+
+-- 加上 -C <仓库根>，让 root 相对路径在任何子目录下都能命中
+local function git_in_root(sub)
+	local root = repo_root()
+	if root == "" then
+		return "git " .. sub
+	end
+	return "git -C " .. quote_arg(root) .. " " .. sub
+end
+
+local function abs_path(file)
+	if file == "" then
+		return ""
+	end
+	if file:sub(1, 1) == "/" or file:match("^%a:[/\\]") then
+		return file
+	end
+	local root = repo_root()
+	if root == "" then
+		return file
+	end
+	return root .. sep .. file
+end
 
 local function porcelain_path(line)
 	if not line or line == "" then
@@ -22,14 +74,6 @@ local function porcelain_path(line)
 	return rest
 end
 
-local function quote_arg(s)
-	s = tostring(s)
-	if is_win then
-		return '"' .. s:gsub('"', "") .. '"'
-	end
-	return "'" .. s:gsub("'", "'\\''") .. "'"
-end
-
 local function has_cmd(name)
 	local cmd = is_win and ("where " .. name .. " 2>" .. null) or ("command -v " .. name .. " 2>" .. null)
 	local r = io.popen(cmd)
@@ -42,7 +86,7 @@ local function has_cmd(name)
 end
 
 local function is_tracked(file)
-	local r = io.popen("git ls-files --error-unmatch -- " .. quote_arg(file) .. " 2>" .. null)
+	local r = io.popen(git_in_root("ls-files --error-unmatch -- " .. quote_arg(file) .. " 2>" .. null))
 	if not r then
 		return false
 	end
@@ -57,9 +101,11 @@ local function run_preview(file)
 	end
 	local diff
 	if is_tracked(file) then
-		diff = "git --no-pager diff HEAD --color=always -- " .. quote_arg(file)
+		-- 仓库根相对路径，配 -C <root> 才在子目录里也找得到
+		diff = git_in_root("--no-pager diff HEAD --color=always -- " .. quote_arg(file))
 	else
-		diff = "git --no-pager diff --no-index --color=always -- /dev/null " .. quote_arg(file)
+		-- 未跟踪文件给绝对路径，--no-index 不吃仓库根相对路径
+		diff = git_in_root("--no-pager diff --no-index --color=always -- /dev/null " .. quote_arg(abs_path(file)))
 	end
 	if has_cmd("delta") then
 		os.execute(diff .. " | delta --paging=never")
@@ -73,7 +119,8 @@ local function open_editor(file)
 		os.exit(1)
 	end
 	local editor = os.getenv("EDITOR") or os.getenv("VISUAL") or "nvim"
-	os.execute(editor .. " -- " .. quote_arg(file))
+	-- 编辑器在调用者的 cwd（可能是子目录）里跑，必须给绝对路径
+	os.execute(editor .. " -- " .. quote_arg(abs_path(file)))
 end
 
 local function read_first_line(path)
@@ -90,7 +137,7 @@ local action = arg and arg[1]
 local rest = table.concat(arg or {}, " ", 2)
 
 if action == "list" then
-	os.execute("git -c core.quotePath=false status --porcelain=v1")
+	os.execute(git_in_root("-c core.quotePath=false status --porcelain=v1"))
 elseif action == "path" then
 	io.stdout:write(porcelain_path(rest) .. "\n")
 elseif action == "preview" then
