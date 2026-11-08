@@ -28,6 +28,15 @@ bindkey '^k' kill-line
 bindkey '^[f' forward-word
 bindkey '^[b' backward-word
 
+# dsh-tui / dst 在 SSH、嵌套终端里会读不到扩展键。加一层包装，默认退回传统按键；
+# 真要扩展键时用 `command dst` 绕过这层函数。只在命令确实存在时定义，
+# 免得换台机器没装 dsh-tui 时留下一个「command not found」的包装。
+for _dsh_cmd in dst dsh-tui; do
+  (( $+commands[$_dsh_cmd] )) || continue
+  functions[$_dsh_cmd]="DSH_TUI_DISABLE_EXTENDED_KEYS=1 command $_dsh_cmd \"\$@\""
+done
+unset _dsh_cmd
+
 # == fzf-tab
 zstyle ':fzf-tab:complete:__zoxide_z_complete:*' query-string input
 # preview of full commandline arguments
