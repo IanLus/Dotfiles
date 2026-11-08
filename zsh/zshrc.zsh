@@ -112,7 +112,9 @@ zstyle ':completion:*' matcher-list 'm:{[:lower:][:upper:]}={[:upper:][:lower:]}
 zstyle ':completion:*:*:docker:*' option-stacking yes
 zstyle ':completion:*:*:docker-*:*' option-stacking yes
 # show systemd unit status
-zstyle ':fzf-tab:complete:systemctl-*:*' fzf-preview 'SYSTEMD_COLORS=1 systemctl status $word'
+# 命令行上有 --user 时改用用户管理器，否则 systemctl --user 补出来的用户单元
+zstyle ':fzf-tab:complete:systemctl-*:*' fzf-preview \
+  '[[ -n $word ]] && SYSTEMD_COLORS=1 SYSTEMD_URLIFY=0 systemctl ${${words[(Ie)--user]:#0}:+--user} status -- "$word"'
 
 # pacman / paru：包名、仓库名、包组名都不是文件，realpath 为空，走 lessfilter 的 cat 会报错。
 # 按操作（-S/-Q/-F/-U…）和修饰符（-i/-l/-g/-o…）选对应的 pacman 查询来预览。
