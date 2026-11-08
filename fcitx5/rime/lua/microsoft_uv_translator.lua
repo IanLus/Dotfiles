@@ -1,36 +1,30 @@
--- 只输入 u / v / uu 时，在候选栏给出和微软拼音相近的用法说明。
-local hints = {
-  u = {
-    { "笔画", "h横 s竖 p撇 n捺 z折 d点。例：uhsh" },
-    { "拆分", "部件拼音连写。例：uhuohuohuo、uyuxia" },
-    { "笔画拆分混合", "部件拼音与笔画连写。例：uchekouhs" },
-    { "符号", "uudw单位 uubd标点 uusx数学 uujh几何 uuxh星号；uuhelp 查看全部" },
-  },
-  uu = {
-    { "uudw", "单位" },
-    { "uubd", "标点" },
-    { "uusx", "数学" },
-    { "uujh", "几何" },
-    { "uuxh", "星号" },
-    { "uuszq", "圆数字、序号" },
-    { "uuhelp", "全部符号分类" },
-  },
-  v = {
-    { "数字", "v123 → 一二三、壹贰叁、金额" },
-    { "公式", "v12+23 → 35，以及 12+23=35；用 a、b、c… 选择" },
-  },
-}
+-- u / v / uu 模式的用法提示，以及「同前缀子模式」汇总提示。
+--
+-- 文案与状态判断都在 microsoft_uv_hints.lua，这里只负责把它变成候选项。
+-- 两类提示，类型都是 uv_hint：
+--   1. 提示态（u、v、uu、还没拼完的 uu<字母>）：一条总览提示，候选栏只留它。
+--   2. 子模式汇总（编码已是精确符号码，但还有更长的编码以它为前缀，例如 uus）：
+--     一条汇总提示排在候选首位，后面跟这个精确编码的真实候选。
+--     这条提示带选择标记，但不参与选词：空格/回车会提交原始编码而不是它。
+local hints = require("microsoft_uv_hints")
 
 local function translator(input, seg, env)
-  local rows = hints[input]
-  if not rows then
+  local config = env.engine.schema.config
+  -- u 模式的 affix 段会把前缀 u 切成 phony 段，此时 seg 只覆盖后半截，
+  -- 所以整理后的编码要用 context.input，而不是函数入参。
+  local code = env.engine.context.input or input
+  local text = hints.hint_text(code, config, env)
+  if not text then
     return
   end
-  for _, row in ipairs(rows) do
-    local cand = Candidate("uv_hint", seg.start, seg._end, row[1], row[2])
-    cand.quality = 10000
-    yield(cand)
+  -- 跨度覆盖整个编码，否则输入框里只剩后面那截。
+  local cand = Candidate(hints.HINT_TYPE, seg.start, #code, text, "")
+  cand.preedit = code
+  -- 子模式汇总要排在真实候选之前；普通提示态只有它一条，不需要抢位置。
+  if hints.is_symbol_code(config, code, env) then
+    cand.quality = 99999
   end
+  yield(cand)
 end
 
 return translator

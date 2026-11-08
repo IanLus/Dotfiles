@@ -1,250 +1,22 @@
--- v 以及 v 后只有数字、小数点和运算符时，用字母选当前页上真实存在的候选。
--- 数字和 + * / ( ) 写入编码。小键盘的 - . 也写入编码。
--- 有候选时，- = ，。 翻页，【】 移动候选，与普通模式一致，不写进编码。
--- 其它按键（不是数字、运算符，也不是当前候选对应的字母）退出字母选词，
--- 恢复数字选词；这个键交给后面的普通输入处理。
--- uu 符号里，数字只有在能延长一条真实编码时才继续输入（uu1 → uu10）；
--- 其余数字是当前页的候选选择键。
+-- 微软拼音式的 u / v 输入（配合 microsoft_uv_translator / microsoft_uv_filter）。
+--
+-- 两个阶段：
+--   提示阶段——编码是 u、v、uu、或还没拼完的 uu<字母>。此时候选栏只有一行说明文字，
+--     没有任何可选候选，也没有选择标记（数字/字母都不显示）。
+--     字母继续进编码；空格、回车把当前编码原样上屏，绝不把提示文字写进输入框。
+--   模式阶段——编码进入具体模式（uhsh 笔画、uudw 单位、v123 数字…）。
+--     v 模式的数字属于编码，选词改用字母标签 a b c…；其余走正常数字选词。
+--
+-- 标签是在按键「生效前」写进配置的，所以要按这一步之后的编码来决定用哪种标签，
+-- 否则会慢一拍（输入 v 时还在显示数字标签，v 模式却要靠字母选词）。
+local hints = require("microsoft_uv_hints")
+
 local LETTERS = "abcdefghijklmnopqrstuvwxyz"
 local DIGITS = "123456789"
--- 与 rime_ice.custom.yaml 里 calculator 的字符集保持一致（v 单独出现时不算公式）。
-local V_SELECT = "^v[0-9.()+*/=-]*$"
-
-local function log_line(msg)
-  local f = io.open("/tmp/uv-label.log", "a")
-  if f then
-    f:write(msg, "\n")
-    f:close()
-  end
-end
-
-local function page_size_of(env)
-  local n = 7
-  local ok, value = pcall(function()
-    return env.engine.schema.page_size
-  end)
-  if ok and type(value) == "number" and value > 0 and value <= 9 then
-    n = value
-  end
-  return n
-end
-
-local function set_labels(env, letters)
-  local config = env.engine.schema.config
-  local n = page_size_of(env)
-  for i = 1, n do
-    local ch = letters:sub(i, i)
-    local path = "menu/alternative_select_labels/@" .. tostring(i - 1)
-    local ok, err = config:set_string(path, ch)
-    if not ok then
-      log_line("set_string failed " .. path .. " " .. tostring(err))
-    end
-  end
-  local size = config:get_list_size("menu/alternative_select_labels")
-  log_line("labels=" .. letters:sub(1, n) .. " size=" .. tostring(size) .. " page=" .. tostring(n))
-end
-
-local function apply_labels(env, enabled)
-  if env.letter_labels == enabled then
-    return
-  end
-  local ok, err = pcall(set_labels, env, enabled and LETTERS or DIGITS)
-  if not ok then
-    log_line("apply failed " .. tostring(err))
-    return
-  end
-  env.letter_labels = enabled
-end
-
-local function fallback_symbol_codes()
-  local codes = {}
-  for i = 0, 9 do
-    codes["uu" .. tostring(i)] = true
-  end
-  codes["uu10"] = true
-  return codes
-end
-
-local function load_symbol_codes(config)
-  local codes = {}
-  local ok, symbols = pcall(function()
-    return config:get_map("punctuator/symbols")
-  end)
-  if ok and symbols then
-    local ok_keys, keys = pcall(function()
-      return symbols:keys()
-    end)
-    if ok_keys and type(keys) == "table" then
-      for _, key in ipairs(keys) do
-        if type(key) == "string" and key:sub(1, 2) == "uu" then
-          codes[key] = true
-        end
-      end
-    end
-  end
-  if not next(codes) then
-    codes = fallback_symbol_codes()
-  end
-  return codes
-end
-
-local function symbol_prefixes(env)
-  if env.symbol_prefixes then
-    return env.symbol_prefixes
-  end
-  local prefixes = {}
-  local codes = load_symbol_codes(env.engine.schema.config)
-  for code in pairs(codes) do
-    for i = 1, #code do
-      prefixes[code:sub(1, i)] = true
-    end
-  end
-  env.symbol_prefixes = prefixes
-  local count = 0
-  for _ in pairs(codes) do
-    count = count + 1
-  end
-  log_line("uu symbol codes=" .. tostring(count))
-  return prefixes
-end
-
-local function select_on_page(ctx, env, index)
-  local page_size = page_size_of(env)
-  local page_start = 0
-  local comp = ctx.composition
-  if comp and not comp:empty() then
-    local seg = comp:back()
-    local selected = seg and seg.selected_index or 0
-    page_start = math.floor(selected / page_size) * page_size
-  end
-  return ctx:select(page_start + index)
-end
-
-local function in_v_select_mode(input)
-  return input:match(V_SELECT) ~= nil
-end
-
-local NAV = {
-  BackSpace = true,
-  Escape = true,
-  Delete = true,
-  Left = true,
-  Right = true,
-  Up = true,
-  Down = true,
-  Page_Up = true,
-  Page_Down = true,
-  Prior = true,
-  Next = true,
-  Home = true,
-  End = true,
-  Tab = true,
-  space = true,
-  Return = true,
-  Shift_L = true,
-  Shift_R = true,
-  Control_L = true,
-  Control_R = true,
-  Alt_L = true,
-  Alt_R = true,
-  Super_L = true,
-  Super_R = true,
-  Caps_Lock = true,
-}
-
--- 与 librime selector 一致：1→0 … 9→8，0→9。
-local function digit_index(ch)
-  local n = tonumber(ch)
-  if not n then
-    return nil
-  end
-  return (n + 9) % 10
-end
-
--- 数字会被 recognizer 的 uu 模式吞掉。能拼出更长符号编码时继续输入，否则选词。
-local function handle_uu_digit(key, env, ctx, input, repr)
-  if key:release() or key:ctrl() or key:alt() or key:super() then
-    return false
-  end
-  if not input:find("^uu") then
-    return false
-  end
-  local digit = repr:match("^([0-9])$")
-  if not digit then
-    return false
-  end
-  local next_input = input .. digit
-  if symbol_prefixes(env)[next_input] then
-    return false
-  end
-  local index = digit_index(digit)
-  local n = page_size_of(env)
-  if index and index < n and ctx:has_menu() then
-    select_on_page(ctx, env, index)
-  end
-  return true
-end
-
--- 当前页上这个字母确实对应一个候选时，返回菜单里的绝对下标。
-local function candidate_index_for_letter(ctx, env, repr)
-  if #repr ~= 1 then
-    return nil
-  end
-  local letter_index = LETTERS:find(repr, 1, true)
-  if not letter_index then
-    return nil
-  end
-  local n = page_size_of(env)
-  if letter_index > n or not ctx:has_menu() then
-    return nil
-  end
-  local page_start = 0
-  local comp = ctx.composition
-  local seg = nil
-  if comp and not comp:empty() then
-    seg = comp:back()
-    local selected = seg and seg.selected_index or 0
-    page_start = math.floor(selected / n) * n
-  end
-  local absolute = page_start + letter_index - 1
-  if not seg then
-    return absolute
-  end
-  local ok, cand = pcall(function()
-    return seg:get_candidate_at(absolute)
-  end)
-  if not ok or cand then
-    return absolute
-  end
-  local counted, count = pcall(function()
-    local menu = seg.menu
-    if not menu then
-      return 0
-    end
-    return menu:candidate_count()
-  end)
-  if not counted or count == 0 then
-    return absolute
-  end
-  return nil
-end
-
-local function labels_enabled(input, repr, key)
-  if key:release() then
-    return in_v_select_mode(input)
-  end
-  local shown = input
-  if repr == "Escape" then
-    shown = ""
-  elseif repr == "BackSpace" then
-    shown = input:sub(1, -2)
-  end
-  if shown == "" and input == "" and repr == "v" then
-    return true
-  end
-  return in_v_select_mode(shown)
-end
-
+local NO_LABELS = " "
+-- 与 rime_ice.custom.yaml 里 calculator 的字符集保持一致；单独一个 v 不算公式。
+local V_SELECT = "^v[0-9.()+*/=-]+$"
+-- 公式里能继续写进编码的符号。
 local EXTRA = {
   plus = "+",
   KP_Add = "+",
@@ -261,80 +33,258 @@ local EXTRA = {
   parenright = ")",
 }
 
--- 与 default.yaml 的 key_binder 一致。有候选时这些键不进入 v 编码。
-local MENU_PREV_PAGE = { minus = true, comma = true }
-local MENU_NEXT_PAGE = { equal = true, period = true }
+-- librime-lua 暴露了全局 log，写日志用它的等级输出即可，不必自己开文件。
+local function log_line(msg)
+  if log and log.warning then
+    log.warning("[microsoft_uv] " .. msg)
+  end
+end
 
-local function selected_index_of(ctx)
+local function page_size_of(env)
+  local n = 7
+  local ok, value = pcall(function()
+    return env.engine.schema.page_size
+  end)
+  if ok and type(value) == "number" and value > 0 and value <= 9 then
+    n = value
+  end
+  return n
+end
+
+local function current_segment(ctx)
   local comp = ctx.composition
   if not comp or comp:empty() then
     return nil
   end
-  return comp:back().selected_index or 0
+  return comp:back()
 end
 
-local function has_candidate_at(ctx, index)
-  local comp = ctx.composition
-  if not comp or comp:empty() then
+-- 提示阶段：候选栏只有一行说明文字，没有任何可选候选。
+local function in_hint_state(env, code)
+  return code ~= "" and hints.is_hint_state(env.engine.schema.config, code, env)
+end
+
+-- 这一步按键之后的编码，用来决定标签类型。
+local function predicted_input(input, repr)
+  if repr:match("^[%a]$") then
+    -- v 模式里字母是在选词，不延长编码。
+    if input:match(V_SELECT) and #input > 1 then
+      return input
+    end
+    return input .. repr
+  end
+  if repr:match("^[0-9]$") or EXTRA[repr] then
+    return input .. (EXTRA[repr] or repr)
+  end
+  if repr == "BackSpace" then
+    return input:sub(1, -2)
+  end
+  if repr == "Escape" then
+    return ""
+  end
+  return input
+end
+
+local function label_mode(env, code)
+  if in_hint_state(env, code) then
+    return "none"
+  end
+  if code:match(V_SELECT) and #code > 1 then
+    return "letter"
+  end
+  return "digit"
+end
+
+-- 改的是 schema 自己的配置副本，下一次按键就生效，不用重新部署。
+-- 路径里的 @N 是 0 基下标；列表短了 librime 会自动补齐。
+local function set_labels(env, letters)
+  local config = env.engine.schema.config
+  local n = page_size_of(env)
+  for i = 1, n do
+    local ch = letters:sub(i, i)
+    if ch == "" then
+      ch = NO_LABELS
+    end
+    local path = "menu/alternative_select_labels/@" .. tostring(i - 1)
+    local ok, err = config:set_string(path, ch)
+    if not ok then
+      log_line("set_string failed " .. path .. " " .. tostring(err))
+    end
+  end
+end
+
+local function apply_label_mode(env, mode)
+  if env.label_mode == mode then
+    return
+  end
+  local letters = DIGITS
+  if mode == "letter" then
+    letters = LETTERS
+  elseif mode == "none" then
+    letters = NO_LABELS
+  end
+  local ok, err = pcall(set_labels, env, letters)
+  if not ok then
+    log_line("apply failed " .. tostring(err))
+    return
+  end
+  env.label_mode = mode
+end
+
+local function in_v_select_mode(input)
+  return input:match(V_SELECT) ~= nil
+end
+
+local function digit_index(ch)
+  local n = tonumber(ch)
+  if not n then
+    return nil
+  end
+  return (n + 9) % 10
+end
+
+local function page_start_of(seg, n)
+  if not seg then
+    return 0
+  end
+  return math.floor((seg.selected_index or 0) / n) * n
+end
+
+local function is_hint_cand(cand)
+  return cand ~= nil and cand.type == hints.HINT_TYPE
+end
+
+-- 当前页上真实候选（跳过提示项）的绝对下标。
+local function real_indices(ctx, env)
+  local seg = current_segment(ctx)
+  if not seg then
+    return {}
+  end
+  local n = page_size_of(env)
+  local page_start = page_start_of(seg, n)
+  local list = {}
+  for index = page_start, page_start + n - 1 do
+    local ok, cand = pcall(function()
+      return seg:get_candidate_at(index)
+    end)
+    if not ok or not cand then
+      break
+    end
+    if not is_hint_cand(cand) then
+      list[#list + 1] = index
+    end
+  end
+  return list
+end
+
+-- 第一页页首那条候选是不是提示项（子模式汇总）。后续页没有提示项。
+local function page_has_hint(ctx, env)
+  local seg = current_segment(ctx)
+  if not seg then
     return false
   end
   local ok, cand = pcall(function()
-    return comp:back():get_candidate_at(index)
+    return seg:get_candidate_at(page_start_of(seg, page_size_of(env)))
   end)
-  if not ok then
-    return true
-  end
-  return cand ~= nil
+  return ok and is_hint_cand(cand)
 end
 
-local function move_highlight(ctx, index)
-  if index < 0 then
-    return
-  end
-  pcall(function()
-    ctx:highlight(index)
-  end)
-end
-
--- 有候选时接管翻页和【】，避免被公式字符或后面的识别器吃掉。
-local function handle_menu_nav(ctx, env, repr)
-  if not ctx:has_menu() then
+-- 把当前编码原样上屏。
+local function commit_raw_code(env, ctx)
+  local text = ctx.input or ""
+  if text == "" then
     return false
   end
-  if MENU_PREV_PAGE[repr] then
-    local n = page_size_of(env)
-    local selected = selected_index_of(ctx)
-    if selected then
-      move_highlight(ctx, selected < n and 0 or selected - n)
-    end
-    return true
+  return pcall(function()
+    env.engine:commit_text(text)
+    ctx:clear()
+  end)
+end
+
+-- index 是「真实候选在页内的序号」，与候选栏上的数字标签一一对应。
+-- 第一页若有子模式汇总提示占着第 1 位，标签 1 指向它、标签 2 才是第一个真实候选；
+-- 所以这里按提示项的有无平移一位，直接按标签取候选，才能和屏幕上的序号一致。
+-- 返回 "hint" 表示这一格是提示项：由调用方改成提交原始编码。
+local function select_by_label(ctx, env, index)
+  local has_hint = page_has_hint(ctx, env)
+  local absolute = real_indices(ctx, env)[has_hint and index or (index + 1)]
+  if absolute then
+    return ctx:select(absolute)
   end
-  if MENU_NEXT_PAGE[repr] then
-    local n = page_size_of(env)
-    local selected = selected_index_of(ctx)
-    if selected then
-      local page_start = math.floor((selected + n) / n) * n
-      if has_candidate_at(ctx, page_start) then
-        move_highlight(ctx, selected + n)
-      end
-    end
-    return true
-  end
-  if repr == "bracketleft" then
-    local selected = selected_index_of(ctx)
-    if selected and selected > 0 then
-      move_highlight(ctx, selected - 1)
-    end
-    return true
-  end
-  if repr == "bracketright" then
-    local selected = selected_index_of(ctx)
-    if selected and has_candidate_at(ctx, selected + 1) then
-      move_highlight(ctx, selected + 1)
-    end
-    return true
+  if has_hint and index == 0 then
+    return "hint"
   end
   return false
+end
+
+-- 数字会被 recognizer 的 uu 模式当成编码吞掉。
+-- 能拼出更长的符号编码时放行进编码（uu1 → uu10），否则当候选选择键。
+local function handle_uu_digit(env, ctx, input, repr)
+  if not input:find("^uu") or in_hint_state(env, input) then
+    return false
+  end
+  local digit = repr:match("^([0-9])$")
+  if not digit then
+    return false
+  end
+  if hints.uu_prefixes(env.engine.schema.config, env)[input .. digit] then
+    return false
+  end
+  if select_by_label(ctx, env, digit_index(digit)) == "hint" then
+    commit_raw_code(env, ctx)
+  end
+  return true
+end
+
+local function selected_index_of(ctx)
+  local seg = current_segment(ctx)
+  if not seg then
+    return nil
+  end
+  return seg.selected_index or 0
+end
+
+local function candidate_at(ctx, index)
+  local seg = current_segment(ctx)
+  if not seg or not index then
+    return nil
+  end
+  local ok, cand = pcall(function()
+    return seg:get_candidate_at(index)
+  end)
+  if ok then
+    return cand
+  end
+  return nil
+end
+
+local function handle_letter_select(ctx, env, repr)
+  if #repr ~= 1 then
+    return false
+  end
+  local letter_index = LETTERS:find(repr, 1, true)
+  if not letter_index then
+    return false
+  end
+  local n = page_size_of(env)
+  if letter_index > n or not ctx:has_menu() then
+    return false
+  end
+  return select_by_label(ctx, env, letter_index - 1)
+end
+
+-- 选中的候选是提示（总览或子模式汇总）时，提交当前编码而不是提示文字。
+-- 子模式汇总是排在真实候选首位的那一条，此时按空格/回车也应得到原始编码。
+local function selected_is_hint(ctx)
+  return is_hint_cand(candidate_at(ctx, selected_index_of(ctx)))
+end
+
+-- 提示阶段按空格或回车：把当前编码原样上屏。
+local function commit_raw_input(env, ctx, repr)
+  if repr ~= "space" and repr ~= "Return" and repr ~= "KP_Enter" then
+    return false
+  end
+  return commit_raw_code(env, ctx)
 end
 
 local function processor(key, env)
@@ -342,50 +292,80 @@ local function processor(key, env)
   local input = ctx.input or ""
   local repr = key:repr()
 
-  apply_labels(env, labels_enabled(input, repr, key))
-
-  if handle_uu_digit(key, env, ctx, input, repr) then
-    return 1
-  end
-
+  -- 只处理裸键。带修饰键的是编辑/导航操作，既不延长编码也不改标签。
   if key:release() or key:ctrl() or key:alt() or key:super() then
     return 2
   end
 
-  if in_v_select_mode(input) then
-    if handle_menu_nav(ctx, env, repr) then
+  -- 标签必须在按键生效前写好，否则会慢一拍（输入 v 时还显示数字标签），
+  -- 所以要按「这一步之后的编码」来决定用哪一种。
+  apply_label_mode(env, label_mode(env, predicted_input(input, repr)))
+
+  -- 退格回到提示态时，段仍停在 phony 前缀状态，翻译器不会重新触发，
+  -- 候选栏会空着、输入框还挂着「〔偏旁〕」。清空后重放整个输入，强制重新分段。
+  if repr == "BackSpace" and (ctx.input or "") ~= "" then
+    local rest = input:sub(1, -2)
+    if in_hint_state(env, rest) then
+      ctx:clear()
+      for i = 1, #rest do
+        ctx:push_input(rest:sub(i, i))
+      end
       return 1
     end
+  end
 
-    local absolute = candidate_index_for_letter(ctx, env, repr)
-    if absolute then
-      ctx:select(absolute)
+  -- ESC：一次清空整个输入。u 模式里前缀 u 是 phony 段，
+  -- librime 的 express_editor 只清最后一个段，所以自己接管。
+  if repr == "Escape" and (ctx.input or "") ~= "" then
+    ctx:clear()
+    return 1
+  end
+
+  -- 提示阶段：字母继续进编码以收窄提示；数字只可能是想选那条提示，一律吞掉；
+  -- 空格/回车提交原始编码。
+  if in_hint_state(env, input) then
+    -- 只有单独一个 u 时，数字没有别的含义，只是有人想选那条提示，吞掉。
+    -- uu 里的数字属于符号编码（uu1 → uu10），v 里的数字进入计算模式，都放行。
+    if input == "u" and repr:match("^[0-9]$") then
       return 1
     end
-
-    local ch = EXTRA[repr]
-    if not ch and repr:match("^[0-9]$") then
-      ch = repr
-    end
-    if ch and ctx.push_input then
-      ctx:push_input(ch)
+    -- 空格/回车把当前编码原样上屏（u、v、uu 都适用），不把提示文字写进输入框。
+    if commit_raw_input(env, ctx, repr) then
       return 1
-    end
-
-    if not NAV[repr] then
-      apply_labels(env, false)
     end
     return 2
   end
 
-  -- 已经不是纯 v 公式。数字恢复为当前页选词，不再写进编码，字母也不再选词。
-  if input:sub(1, 1) == "v" and repr:match("^[0-9]$") and ctx:has_menu() then
-    local index = digit_index(repr)
-    local n = page_size_of(env)
-    if index and index < n then
-      select_on_page(ctx, env, index)
+  -- 子模式汇总提示排在真实候选首位时，选中它按空格/回车要提交原始编码。
+  if ctx:has_menu() and selected_is_hint(ctx) and commit_raw_input(env, ctx, repr) then
+    return 1
+  end
+
+  if handle_uu_digit(env, ctx, input, repr) then
+    return 1
+  end
+
+  if in_v_select_mode(input) then
+    -- 公式字符（- . + * / ( ) =）和数字必须先写进编码，
+    -- 否则会被当成翻页键（- = , .）或选词键（数字）吃掉。
+    local ch = EXTRA[repr] or (repr:match("^[0-9]$") and repr)
+    if ch then
+      -- 必须用冒号调用：点号会少传 self，lua 侧直接报错、按键被静默丢弃。
+      ctx:push_input(ch)
       return 1
     end
+
+    -- v 模式不翻页：逗号吞掉，避免被 key_binder 当成上一页；
+    -- 【】交给 key_binder 统一处理，和普通模式走同一条路径。
+    if repr == "comma" then
+      return 1
+    end
+
+    if handle_letter_select(ctx, env, repr) then
+      return 1
+    end
+
+    return 2
   end
 
   return 2

@@ -41,7 +41,7 @@ switches:
 # 输入引擎
 engine:
   processors:
-    - lua_processor@*microsoft_uv_processor  # v 模式数字与运算符
+    - lua_processor@*microsoft_uv_processor  # u/v 模式按键：选词标签、提示态、v 公式
     - lua_processor@*select_character  # 以词定字
     - ascii_composer
     - recognizer
@@ -59,7 +59,7 @@ engine:
     - punct_segmentor
     - fallback_segmentor
   translators:
-    - lua_translator@*microsoft_uv_translator  # u/v 用法提示
+    - lua_translator@*microsoft_uv_translator  # u/v/uu 用法提示
     - table_translator@chaizi_lookup
     - table_translator@stroke_lookup
     - punct_translator
@@ -79,6 +79,7 @@ engine:
     - lua_filter@*corrector                         # 错音错字提示
     - reverse_lookup_filter@radical_reverse_lookup  # 部件拆字滤镜
     - lua_filter@*autocap_filter                    # 英文自动大写
+    - lua_filter@*microsoft_uv_filter               # u/v 提示候选、v 数字去噪
     - lua_filter@*v_filter                          # v 模式 symbols 优先
     - lua_filter@*pin_cand_filter                   # 置顶候选项（顺序要求：置顶候选项 > Emoji > 简繁切换）
     - lua_filter@*long_word_filter                  # 长词优先（顺序要求：长词优先 > Emoji）
@@ -471,3 +472,11 @@ speller:
     - derive/(.+)ong$/$1on/ # lon → long
     - derive/([tl])eng$/$1en/ # ten → teng
     - derive/([qwrtypsdfghjklzxcbnm])([aeio])ng$/$1ng/ # lng → lang、leng、ling、long
+
+# 光标移动：Ctrl+←/→ 按音节移动，且到头就停、不循环。
+# ←/→ 按字符移动、Shift+←/→ 循环翻音节，都继承自 default.yaml 的 navigator 预设，
+# Alt+←/→ 与 Alt+b/f 由 key_binder 转发到 Ctrl+←/→，所以这里只需要补 Ctrl 两键。
+navigator:
+  bindings:
+    Control+Left: left_by_syllable_no_loop
+    Control+Right: right_by_syllable_no_loop
