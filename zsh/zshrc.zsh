@@ -29,8 +29,7 @@ bindkey '^[f' forward-word
 bindkey '^[b' backward-word
 
 # dsh-tui / dst 在 SSH、嵌套终端里会读不到扩展键。加一层包装，默认退回传统按键；
-# 真要扩展键时用 `command dst` 绕过这层函数。只在命令确实存在时定义，
-# 免得换台机器没装 dsh-tui 时留下一个「command not found」的包装。
+# 真要扩展键时用 `command dst` 绕过这层函数。
 for _dsh_cmd in dst dsh-tui; do
   (( $+commands[$_dsh_cmd] )) || continue
   functions[$_dsh_cmd]="DSH_TUI_DISABLE_EXTENDED_KEYS=1 command $_dsh_cmd \"\$@\""
@@ -111,8 +110,7 @@ zstyle ':fzf-tab:*' active-group-style bold underline
 zstyle ':completion:*' matcher-list 'm:{[:lower:][:upper:]}={[:upper:][:lower:]}' 'm:{[:lower:][:upper:]}={[:upper:][:lower:]} l:|=* r:|=*' 'm:{[:lower:][:upper:]}={[:upper:][:lower:]} l:|=* r:|=*' 'm:{[:lower:][:upper:]}={[:upper:][:lower:]} l:|=* r:|=*'
 zstyle ':completion:*:*:docker:*' option-stacking yes
 zstyle ':completion:*:*:docker-*:*' option-stacking yes
-# show systemd unit status
-# 命令行上有 --user 时改用用户管理器，否则 systemctl --user 补出来的用户单元
+# show systemd unit status（--user 选管理器、空候选保护等细节见 fzf/README.md）
 zstyle ':fzf-tab:complete:systemctl-*:*' fzf-preview \
   '[[ -n $word ]] && SYSTEMD_COLORS=1 SYSTEMD_URLIFY=0 systemctl ${${words[(Ie)--user]:#0}:+--user} status -- "$word"'
 
