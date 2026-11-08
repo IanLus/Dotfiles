@@ -204,8 +204,9 @@ _dotfiles_preview_pacman() {
         out=$(_dotfiles_pacman_run -Si -- $repo_prefix$w)
         ;;
       -Si)
+        # 本地库没有就去 AUR 查：挑命令行里的 helper（paru/yay/pikaur）
         local helper
-        for helper in ${words:#(#b)(pacman|pacman-conf)}; do
+        for helper in $words; do
           [[ $helper == (paru|yay|pikaur) ]] || continue
           command -v $helper >/dev/null 2>&1 || continue
           out=$(timeout 10 $helper --color=always -Si -- $repo_prefix$w 2>/dev/null)

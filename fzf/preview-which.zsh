@@ -50,7 +50,25 @@ _dotfiles_dump_which_defs() {
   (( $+galiases )) && for k in ${(ko)galiases}; do
     _pairs+="g:$k=$galiases[$k]"
   done
-  sig="${(j:;:)_pairs}|${#${(k)functions:#([_.]*|-*|prompt_*|instant_prompt_*)}}"
+
+  for k in ${(k)functions:#([_.]*|-*|prompt_*|instant_prompt_*)}; do
+    [[ $functions[$k] == *$'\tautoload '* ]] && continue
+    (( $#functions[$k] > 20000 )) && continue
+    _ftb_funcdump[$k]=$functions[$k]
+  done
+
+  # 签名要含函数体内容：只数个数的话改完函数体签名不变，预览一直是旧定义。
+  local payload=''
+  for k in ${(ko)_ftb_funcdump}; do
+    payload+=$k$'\1'$_ftb_funcdump[$k]$'\1'
+  done
+  local fingerprint
+  if (( $+commands[cksum] )); then
+    fingerprint=$(print -rn -- $payload | cksum)
+  else
+    fingerprint=$#payload
+  fi
+  sig="${(j:;:)_pairs}|${#_ftb_funcdump}|$fingerprint"
   [[ $sig == $_dotfiles_which_defs_sig && -s $_dotfiles_which_defs ]] && return
 
   for k in ${(k)aliases}; do
@@ -58,12 +76,6 @@ _dotfiles_dump_which_defs() {
   done
   (( $+galiases )) && for k in ${(k)galiases}; do
     _ftb_aliasdump[$k]=${_ftb_aliasdump[$k]:-$galiases[$k]}
-  done
-
-  for k in ${(k)functions:#([_.]*|-*|prompt_*|instant_prompt_*)}; do
-    [[ $functions[$k] == *$'\tautoload '* ]] && continue
-    (( $#functions[$k] > 20000 )) && continue
-    _ftb_funcdump[$k]=$functions[$k]
   done
 
   { typeset -p _ftb_aliasdump; typeset -p _ftb_funcdump } >| $_dotfiles_which_defs
