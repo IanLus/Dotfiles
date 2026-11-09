@@ -27,6 +27,9 @@ bindkey '^q' push-line-or-edit
 bindkey '^k' kill-line
 bindkey '^[f' forward-word
 bindkey '^[b' backward-word
+# forward-word / backward-word 的边界由 $WORDCHARS 决定，默认值里带 / - . _ 等，
+# 于是 /hello/world、foo-bar、a.b、x_y 都会被当成一个词。把它们当分隔符用。
+WORDCHARS=${WORDCHARS//[.\/_-]/}
 
 # dsh-tui / dst 在 SSH、嵌套终端里会读不到扩展键。加一层包装，默认退回传统按键；
 # 真要扩展键时用 `command dst` 绕过这层函数。
